@@ -1,6 +1,28 @@
-# Gradle
-.gradle/
-build/
+# Build output
+/build/
+/bin/
+/out/
+/libs/
 
-# VSCode
-.vscode/
+# IDE stuff
+/.idea/
+/*.iml
+/.classpath
+/.project
+/.settings/
+/.vscode/
+
+# OS stuff
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Gradle cache
+.gradle/
+
+# Gradle wrapper
+gradle/
+gradlew
+gradlew.bat

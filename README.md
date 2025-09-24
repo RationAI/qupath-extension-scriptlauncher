@@ -1,1 +1,1 @@
-# qupath-extension-autorun
+# QuPath Extension Script Launcher
