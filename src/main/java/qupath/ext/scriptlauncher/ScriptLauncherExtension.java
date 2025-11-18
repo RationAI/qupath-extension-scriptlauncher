@@ -11,7 +11,15 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
+import java.util.List;
+
+import java.awt.image.BufferedImage;
+import qupath.lib.images.ImageData;
+import qupath.lib.images.servers.remote.EmpaiaRemoteWsiClient;
+import qupath.lib.images.servers.remote.EmpaiaRemoteWsiImageServer;
 
 public class ScriptLauncherExtension implements QuPathExtension {
 
@@ -27,21 +35,58 @@ public class ScriptLauncherExtension implements QuPathExtension {
    
     @Override
     public void installExtension(QuPathGUI qupath) {
-        String imagePath = System.getenv("QUPATH_IMAGE");
-        if (imagePath == null) {
-            logger.warn("QUPATH_IMAGE not set");
+        // Autodiscover WSI from EMPAIA API (do not read QUPATH_IMAGE)
+        String baseApi = System.getenv("EMPAIA_APP_API");
+        String jobId = System.getenv("EMPAIA_JOB_ID");
+        String token = System.getenv("EMPAIA_TOKEN");
+
+        if (baseApi == null || jobId == null) {
+            logger.error("EMPAIA_APP_API and EMPAIA_JOB_ID must be set for autodiscovery");
             return;
         }
-        File f = new File(imagePath);
-        if (!f.exists()) {
-            logger.error("Image file not found: " + imagePath);
-            return;
-        }
+
+        Map<String,String> headers = token != null ? Map.of("Authorization", "Bearer " + token) : Map.of();
+        EmpaiaRemoteWsiClient client = new EmpaiaRemoteWsiClient(baseApi, jobId, headers);
+
         try {
-            qupath.openImage(qupath.getViewer(), imagePath);
-            logger.info("Opened image via OpenSlide: " + imagePath);
-        } catch (IOException e) {
-            logger.error("Failed to open image with OpenSlide", e);
+            // Always autodiscover pixelmaps from the EMPAIA API. Do not allow
+            // operator-supplied EMPAIA_PIXELMAP_ID/EMPAIA_WSI_ID overrides.
+            List<String> pixelmaps = client.listPixelmaps();
+            if (pixelmaps == null || pixelmaps.isEmpty()) {
+                logger.error("No pixelmaps found for job {}", jobId);
+                return;
+            }
+
+            // If multiple pixelmaps are present, pick the first one. We could
+            // later expose a chooser in the UI if needed.
+            String wsiId = pixelmaps.get(0);
+            logger.info("Autodiscovered EMPAIA WSI id(s): {}. Using {}", pixelmaps, wsiId);
+            URI uri = URI.create(wsiId);
+
+            // Validate metadata first to avoid unchecked IllegalArgumentException
+            // thrown by ImageServerMetadata.Builder when width/height are invalid.
+            EmpaiaRemoteWsiClient.Metadata md = client.fetchMetadata(wsiId);
+            if (md == null || md.width <= 0 || md.height <= 0) {
+                logger.error("Invalid EMPAIA metadata for wsiId={}: width={}, height={}. Aborting open.", wsiId,
+                        md == null ? -1 : md.width, md == null ? -1 : md.height);
+                return;
+            }
+
+            // Build server directly and open in the current viewer
+            try {
+                EmpaiaRemoteWsiImageServer server = new EmpaiaRemoteWsiImageServer(uri);
+                ImageData<BufferedImage> imageData = new ImageData<>(server);
+                qupath.getViewer().setImageData(imageData);
+                logger.info("Opened EMPAIA WSI {} via EmpaiaRemoteWsiImageServer", wsiId);
+            } catch (RuntimeException e) {
+                // Catch unchecked exceptions (e.g. IllegalArgumentException) to avoid
+                // crashing the extension loader; log and abort gracefully.
+                logger.error("Failed to construct EmpaiaRemoteWsiImageServer for wsiId={}", wsiId, e);
+                return;
+            }
+
+        } catch (IOException | InterruptedException e) {
+            logger.error("Failed to autodiscover or open EMPAIA WSI", e);
             return;
         }
 
@@ -91,7 +136,7 @@ public class ScriptLauncherExtension implements QuPathExtension {
     HttpRequest request = builder.build();
 
     return client.send(request, HttpResponse.BodyHandlers.ofString());
-}
+    }
 
 
     @Override

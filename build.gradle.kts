@@ -23,6 +23,10 @@ dependencies {
     compileOnly(":qupath-gui-fx-0.6.0") 
     compileOnly(":qupath-extension-openslide-0.6.0") 
     compileOnly("org.slf4j:slf4j-api:1.7.36") 
+    // Include Jackson to parse EMPAIA API JSON responses robustly. This will be
+    // packaged in the extension JAR so the runtime (QuPath) doesn't need to
+    // provide it.
+    compileOnly("com.fasterxml.jackson.core:jackson-databind:2.15.2")
 }
 tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
