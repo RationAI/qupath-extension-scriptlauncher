@@ -37,9 +37,12 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 
 	private ImageServerMetadata originalMetadata;
 
-	// Keep the raw metadata returned by the client for level sizes and base dims
+	/** Raw metadata returned by the EMPAIA client (kept for level math). */
 	private EmpaiaRemoteWsiClient.Metadata metadata;
 
+	/**
+	 * Construct an image server backed by an existing EMPAIA client and WSI id.
+	 */
 	public EmpaiaRemoteWsiImageServer(EmpaiaRemoteWsiClient client, String wsiId) throws IOException {
 		super();
 		this.uri = null;
@@ -48,6 +51,12 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 		initFromMetadata();
 	}
 
+	/**
+	 * Construct an image server from a {@link URI}. The constructor will
+	 * create an {@link EmpaiaRemoteWsiClient} using environment variables
+	 * EMPAIA_APP_API and EMPAIA_JOB_ID. The WSI id is taken from the URI
+	 * path if present, otherwise the URI string is used as a fallback.
+	 */
 	public EmpaiaRemoteWsiImageServer(URI uri, String... args) throws IOException {
 		super();
 		this.uri = uri;
@@ -69,19 +78,27 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 			Path p = Path.of(path);
 			id = p.getFileName() != null ? p.getFileName().toString() : null;
 		}
-		// Use the path filename if provided, otherwise fall back to the URI string.
-		// (Remove bespoke empaia-specific prefix handling here.)
+
+		// Use the path filename if available, otherwise fall back to the URI text.
 		this.wsiId = (id != null) ? id : (uri != null ? uri.toString() : null);
 
 		initFromMetadata();
 	}
 
 	private void initFromMetadata() throws IOException {
+		if (wsiId == null || wsiId.isBlank()) {
+			throw new IOException("Missing WSI identifier for EMPAIA image server");
+		}
+
 		EmpaiaRemoteWsiClient.Metadata md;
 		try {
-			md = client.fetchMetadata(wsiId);
+			md = client.fetchMetadata();
 		} catch (Exception e) {
 			throw new IOException("Failed to fetch EMPAIA metadata for wsiId=" + wsiId, e);
+		}
+
+		if (md == null) {
+			throw new IOException("EMP AIA metadata was empty for wsiId=" + wsiId);
 		}
 
 		// store for later use in readTile
@@ -90,7 +107,9 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 		ImageResolutionLevel.Builder builder = new ImageResolutionLevel.Builder(Math.max(1, md.width), Math.max(1, md.height));
 		if (md.levels != null) {
 			for (int[] wh : md.levels) {
-				if (wh != null && wh.length >= 2) builder.addLevel(wh[0], wh[1]);
+				if (wh != null && wh.length >= 2) {
+					builder.addLevel(wh[0], wh[1]);
+				}
 			}
 		}
 		List<ImageResolutionLevel> levels = builder.build();
@@ -106,7 +125,9 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 		// Best-effort fetch to log server capability
 		try {
 			BufferedImage img = client.fetchTile(wsiId, 0, 0, 0);
-			if (img != null) logger.debug("Test tile fetched: {}x{}", img.getWidth(), img.getHeight());
+			if (img != null) {
+				logger.debug("Test tile fetched: {}x{}", img.getWidth(), img.getHeight());
+			}
 		} catch (Exception e) {
 			logger.debug("Could not fetch test tile: {}", e.getMessage());
 		}
@@ -114,7 +135,17 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 
 	@Override
 	public Collection<URI> getURIs() {
-		return uri != null ? Collections.singletonList(uri) : Collections.emptyList();
+		if (uri != null) {
+			return Collections.singletonList(uri);
+		}
+
+		// Provide a stable, well-formed URI using a custom scheme so callers
+		// that parse URIs don't encounter "Missing scheme" errors when a
+		// plain id string is used as the identifier.
+		if (wsiId != null) {
+			return Collections.singletonList(URI.create("empaia:" + wsiId));
+		}
+		return Collections.emptyList();
 	}
 
 	@Override
@@ -134,13 +165,13 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 
 	@Override
 	public BufferedImage readTile(TileRequest tileRequest) throws IOException {
-		try {
-			int imageX = tileRequest.getImageX();
-			int imageY = tileRequest.getImageY();
-			int tileW = tileRequest.getTileWidth();
-			int tileH = tileRequest.getTileHeight();
-			int level = tileRequest.getLevel();
+		final int imageX = tileRequest.getImageX();
+		final int imageY = tileRequest.getImageY();
+		final int tileW = tileRequest.getTileWidth();
+		final int tileH = tileRequest.getTileHeight();
+		final int level = tileRequest.getLevel();
 
+		try {
 			// Convert coordinates to the requested level's coordinate space.
 			int imageXLevel = imageX;
 			int imageYLevel = imageY;
@@ -155,42 +186,60 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 			// Try the precise regions endpoint first (using level-specific coords)
 			try {
 				BufferedImage region = client.fetchRegion(wsiId, level, imageXLevel, imageYLevel, tileW, tileH);
-				if (region == null) throw new IOException("Server returned empty region");
+				if (region == null) {
+					throw new IOException("Server returned empty region");
+				}
 
 				if (region.getWidth() != tileW || region.getHeight() != tileH) {
 					BufferedImage out = new BufferedImage(tileW, tileH, BufferedImage.TYPE_INT_RGB);
 					Graphics2D g = out.createGraphics();
-					g.drawImage(region, 0, 0, null);
-					g.dispose();
+					logger.info("using region size {}x{} for tile {}x{} at level {} (requested {}x{})",
+							region.getWidth(), region.getHeight(), imageXLevel, imageYLevel, level, tileW, tileH);
+					try {
+						g.drawImage(region, 0, 0, null);
+					} finally {
+						g.dispose();
+					}
 					return out;
 				}
 
 				if (region.getType() != BufferedImage.TYPE_INT_RGB) {
 					BufferedImage rgb = new BufferedImage(region.getWidth(), region.getHeight(), BufferedImage.TYPE_INT_RGB);
 					Graphics2D g = rgb.createGraphics();
-					g.drawImage(region, 0, 0, null);
-					g.dispose();
+					logger.info("converting region image type {} to TYPE_INT_RGB for tile {}x{} at level {}",
+							region.getType(), imageXLevel, imageYLevel, level);
+					try {
+						g.drawImage(region, 0, 0, null);
+					} finally {
+						g.dispose();
+					}
 					return rgb;
 				}
 
 				return region;
 			} catch (IOException e) {
-				logger.debug("Region endpoint failed, falling back to tiles: {}", e.getMessage());
+				logger.debug("Region endpoint failed for wsiId={}, level={}, x={}, y={} — falling back to tiles: {}",
+						wsiId, level, imageXLevel, imageYLevel, e.getMessage());
 
-				int serverTileW = originalMetadata.getPreferredTileWidth();
-				int serverTileH = originalMetadata.getPreferredTileHeight();
-				int tileXIndex = Math.floorDiv(imageXLevel, serverTileW);
-				int tileYIndex = Math.floorDiv(imageYLevel, serverTileH);
-				int offsetX = imageXLevel - tileXIndex * serverTileW;
-				int offsetY = imageYLevel - tileYIndex * serverTileH;
+				final int serverTileW = originalMetadata.getPreferredTileWidth();
+				final int serverTileH = originalMetadata.getPreferredTileHeight();
+				final int tileXIndex = Math.floorDiv(imageXLevel, serverTileW);
+				final int tileYIndex = Math.floorDiv(imageYLevel, serverTileH);
+				final int offsetX = imageXLevel - tileXIndex * serverTileW;
+				final int offsetY = imageYLevel - tileYIndex * serverTileH;
 
 				BufferedImage serverTile = client.fetchTile(wsiId, level, tileXIndex, tileYIndex);
-				if (serverTile == null) throw new IOException("Server returned empty tile");
+				if (serverTile == null) {
+					throw new IOException("Server returned empty tile");
+				}
 
 				BufferedImage out = new BufferedImage(tileW, tileH, BufferedImage.TYPE_INT_RGB);
 				Graphics2D g = out.createGraphics();
-				g.drawImage(serverTile, -offsetX, -offsetY, null);
-				g.dispose();
+				try {
+					g.drawImage(serverTile, -offsetX, -offsetY, null);
+				} finally {
+					g.dispose();
+				}
 				return out;
 			}
 		} catch (InterruptedException e) {
@@ -199,8 +248,7 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 		} catch (Exception e) {
 			// Log detailed context to help debugging remote failures
 			logger.error("Failed to read tile for wsiId={}, level={}, x={}, y={}, w={}, h={}",
-					wsiId, tileRequest.getLevel(), tileRequest.getImageX(), tileRequest.getImageY(),
-					tileRequest.getTileWidth(), tileRequest.getTileHeight(), e);
+					wsiId, level, imageX, imageY, tileW, tileH, e);
 			throw new IOException("Failed to read tile: " + e.getMessage(), e);
 		}
 	}
@@ -210,14 +258,17 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 		return Collections.emptyList();
 	}
 
+	/**
+	 * Builder creation is not supported by this server implementation.
+	 */
 	@Override
 	protected qupath.lib.images.servers.ImageServerBuilder.ServerBuilder<BufferedImage> createServerBuilder() {
-		return null;
+		throw new UnsupportedOperationException("ImageServer builder not supported for EmpaiaRemoteWsiImageServer");
 	}
 
 	@Override
 	public BufferedImage getAssociatedImage(String name) {
-		throw new IllegalArgumentException("No associated images available");
+		throw new IllegalArgumentException("No associated images available: " + name);
 	}
 
 	@Override
