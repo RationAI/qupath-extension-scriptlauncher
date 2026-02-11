@@ -11,7 +11,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 
 import java.awt.image.BufferedImage;
@@ -75,23 +74,155 @@ public class ScriptLauncherExtension implements QuPathExtension {
             return;
         }
 
-        String scriptPathEnv = System.getenv("QUPATH_SCRIPT");
-        if (scriptPathEnv == null) {
-            logger.warn("QUPATH_SCRIPT not set");
-            return;
-        }
-
-        Path scriptPath = Path.of(scriptPathEnv);
-        if (!Files.exists(scriptPath)) {
-            logger.error("Script file not found: {}", scriptPath);
-            return;
-        }
-
+        // Try to fetch script from EMPAIA /inputs/my_script first
+        String scriptContent = null;
+        String scriptSource = null;
+        
         try {
-            qupath.runScript(scriptPath.toFile(), null);
-            logger.info("Executed script: {}", scriptPath);
+            String scriptUrl = String.format("%s/%s/inputs/my_script", baseApi, jobId);
+            logger.info("Fetching script from EMPAIA: {}", scriptUrl);
+            
+            HttpRequest.Builder scriptReqBuilder = HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(scriptUrl))
+                    .GET();
+            
+            if (token != null) {
+                scriptReqBuilder.header("Authorization", "Bearer " + token);
+            }
+            
+            HttpResponse<String> scriptResp = httpClient.send(scriptReqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+            
+            if (scriptResp.statusCode() >= 200 && scriptResp.statusCode() < 300) {
+                // Parse JSON response to extract primitive value
+                String jsonResponse = scriptResp.body();
+                logger.debug("Received script response: {}", jsonResponse);
+                
+                // Simple JSON parsing to extract "value" field
+                // Format: {"id":"...", "type":"string", "value":"script content here", ...}
+                int valueStart = jsonResponse.indexOf("\"value\":");
+                if (valueStart > 0) {
+                    valueStart = jsonResponse.indexOf("\"", valueStart + 8) + 1;
+                    int valueEnd = jsonResponse.indexOf("\"", valueStart);
+                    // Handle escaped quotes
+                    while (valueEnd > 0 && jsonResponse.charAt(valueEnd - 1) == '\\') {
+                        valueEnd = jsonResponse.indexOf("\"", valueEnd + 1);
+                    }
+                    if (valueEnd > valueStart) {
+                        scriptContent = jsonResponse.substring(valueStart, valueEnd);
+                        // Unescape JSON string
+                        scriptContent = scriptContent
+                                .replace("\\\"", "\"")
+                                .replace("\\\\", "\\")
+                                .replace("\\n", "\n")
+                                .replace("\\r", "\r")
+                                .replace("\\t", "\t");
+                        scriptSource = "EMPAIA /inputs/my_script";
+                        logger.info("Loaded script from EMPAIA ({} characters)", scriptContent.length());
+                    }
+                }
+                
+                if (scriptContent == null) {
+                    logger.warn("Could not extract 'value' from EMPAIA response");
+                }
+            } else {
+                logger.warn("EMPAIA script fetch returned status {}", scriptResp.statusCode());
+            }
         } catch (Exception e) {
-            logger.error("Failed to execute script {}", scriptPath, e);
+            logger.warn("Could not fetch script from EMPAIA: {}", e.getMessage());
+        }
+
+        // Fallback to QUPATH_SCRIPT environment variable
+        if (scriptContent == null) {
+            String scriptPathEnv = System.getenv("QUPATH_SCRIPT");
+            if (scriptPathEnv == null) {
+                logger.error("No script found: neither EMPAIA /inputs/my_script nor QUPATH_SCRIPT env var available");
+                return;
+            }
+
+            Path scriptPath = Path.of(scriptPathEnv);
+            if (!Files.exists(scriptPath)) {
+                logger.error("Script file not found: {}", scriptPath);
+                return;
+            }
+            
+            try {
+                scriptContent = Files.readString(scriptPath);
+                scriptSource = "QUPATH_SCRIPT: " + scriptPath;
+                logger.info("Loaded script from file: {}", scriptPath);
+            } catch (IOException e) {
+                logger.error("Failed to read script file {}", scriptPath, e);
+                return;
+            }
+        }
+
+        // Execute the script
+        if (scriptContent != null && !scriptContent.isEmpty()) {
+            Object scriptResult = null;
+            try {
+                // Write to temporary file and execute
+                Path tempScript = Files.createTempFile("qupath-empaia-", ".groovy");
+                Files.writeString(tempScript, scriptContent);
+                
+                scriptResult = qupath.runScript(tempScript.toFile(), null);
+                logger.info("Successfully executed script from: {}", scriptSource);
+                logger.info("Script returned: {}", scriptResult);
+                
+                // Clean up temp file
+                Files.deleteIfExists(tempScript);
+            } catch (Exception e) {
+                logger.error("Failed to execute script from {}", scriptSource, e);
+            }
+            
+            // Send result back to EMPAIA /outputs/test
+            if (scriptResult != null) {
+                try {
+                    Integer resultValue = null;
+                    
+                    // Convert result to integer
+                    if (scriptResult instanceof Integer) {
+                        resultValue = (Integer) scriptResult;
+                    } else if (scriptResult instanceof Number) {
+                        resultValue = ((Number) scriptResult).intValue();
+                    } else {
+                        try {
+                            resultValue = Integer.parseInt(scriptResult.toString());
+                        } catch (NumberFormatException e) {
+                            logger.warn("Script result '{}' is not a valid integer", scriptResult);
+                        }
+                    }
+                    
+                    if (resultValue != null) {
+                        String outputUrl = String.format("%s/%s/outputs/test", baseApi, jobId);
+                        logger.info("Sending result {} to EMPAIA: {}", resultValue, outputUrl);
+                        
+                        String jsonBody = String.format("{\"value\": %d}", resultValue);
+                        
+                        HttpRequest.Builder outputReqBuilder = HttpRequest.newBuilder()
+                                .uri(java.net.URI.create(outputUrl))
+                                .header("Content-Type", "application/json")
+                                .PUT(HttpRequest.BodyPublishers.ofString(jsonBody));
+                        
+                        if (token != null) {
+                            outputReqBuilder.header("Authorization", "Bearer " + token);
+                        }
+                        
+                        HttpResponse<String> outputResp = httpClient.send(outputReqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+                        
+                        if (outputResp.statusCode() >= 200 && outputResp.statusCode() < 300) {
+                            logger.info("Successfully sent result to EMPAIA (status {})", outputResp.statusCode());
+                        } else {
+                            logger.error("Failed to send result to EMPAIA: status {}, body: {}", 
+                                    outputResp.statusCode(), outputResp.body());
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("Failed to send result to EMPAIA", e);
+                }
+            } else {
+                logger.warn("Script returned null, no result to send to EMPAIA");
+            }
+        } else {
+            logger.warn("Script content is empty");
         }
 
         try {
