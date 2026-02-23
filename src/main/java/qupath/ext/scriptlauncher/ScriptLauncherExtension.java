@@ -28,9 +28,9 @@ public class ScriptLauncherExtension implements QuPathExtension {
     @Override
     public void installExtension(QuPathGUI qupath) {
         // Autodiscover WSI from EMPAIA API (do not read QUPATH_IMAGE)
-        String baseApi = System.getenv("EMPAIA_APP_API");
-        String jobId = System.getenv("EMPAIA_JOB_ID");
-        String token = System.getenv("EMPAIA_TOKEN");
+        String baseApi = "https://testrat.dyn.cloud.e-infra.cz/api/app/v3";
+        String jobId = "dde46b06-3e66-4440-bdaa-698f92748db0";
+        String token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZGU0NmIwNi0zZTY2LTQ0NDAtYmRhYS02OThmOTI3NDhkYjAiLCJleHAiOjE3NzE1OTkxNzQsInRva2VuX2lkIjoxMn0.QIvHMR0uPOMSYsUt93ajp-94hGXdshV62NKYzmOaBPDFxg09n_x9sL8NpIPusIoB5k22Bq6CpEfCFknELc97djLcVne8N-JXoUhS__DBAMORUGuO0ky4hjoeKRpCvB2hKgnwjW1FpnpRswTSxA6L2zglqZN34dUHgFyLZEsrHtQ";
 
         if (baseApi == null || jobId == null) {
             logger.error("EMPAIA_APP_API and EMPAIA_JOB_ID must be set for autodiscovery");
@@ -41,7 +41,7 @@ public class ScriptLauncherExtension implements QuPathExtension {
         EmpaiaRemoteWsiClient empaiaClient = new EmpaiaRemoteWsiClient(baseApi, jobId, headers);
 
         try {
-            // Fetch metadata directly from inputs/my_wsi which includes the WSI id
+            // Fetch metadata directly from inputs/slide which includes the WSI id
             EmpaiaRemoteWsiClient.Metadata md = empaiaClient.fetchMetadata();
             String wsiId = md != null ? md.id : null;
             logger.info("Autodiscovered EMPAIA WSI id: {}", wsiId);
@@ -70,7 +70,7 @@ public class ScriptLauncherExtension implements QuPathExtension {
             }
 
         } catch (IOException | InterruptedException e) {
-            logger.error("Failed to autodiscover or open EMPAIA WSI", e);
+            logger.error("Failed to autodiscover or open EMPAIA WSI: " + e.getMessage(), e);
             return;
         }
 
@@ -79,7 +79,7 @@ public class ScriptLauncherExtension implements QuPathExtension {
         String scriptSource = null;
         
         try {
-            String scriptUrl = String.format("%s/%s/inputs/my_script", baseApi, jobId);
+            String scriptUrl = String.format("%s/%s/inputs/script", baseApi, jobId);
             logger.info("Fetching script from EMPAIA: {}", scriptUrl);
             
             HttpRequest.Builder scriptReqBuilder = HttpRequest.newBuilder()
@@ -116,7 +116,7 @@ public class ScriptLauncherExtension implements QuPathExtension {
                                 .replace("\\n", "\n")
                                 .replace("\\r", "\r")
                                 .replace("\\t", "\t");
-                        scriptSource = "EMPAIA /inputs/my_script";
+                        scriptSource = "EMPAIA /inputs/script";
                         logger.info("Loaded script from EMPAIA ({} characters)", scriptContent.length());
                     }
                 }
@@ -135,7 +135,7 @@ public class ScriptLauncherExtension implements QuPathExtension {
         if (scriptContent == null) {
             String scriptPathEnv = System.getenv("QUPATH_SCRIPT");
             if (scriptPathEnv == null) {
-                logger.error("No script found: neither EMPAIA /inputs/my_script nor QUPATH_SCRIPT env var available");
+                logger.error("No script found: neither EMPAIA /inputs/script nor QUPATH_SCRIPT env var available");
                 return;
             }
 
@@ -192,28 +192,36 @@ public class ScriptLauncherExtension implements QuPathExtension {
                     }
                     
                     if (resultValue != null) {
-                        String outputUrl = String.format("%s/%s/outputs/test", baseApi, jobId);
-                        logger.info("Sending result {} to EMPAIA: {}", resultValue, outputUrl);
+                        // POST complete collection with items
+                        String outputUrl = String.format("%s/%s/outputs/output_values", baseApi, jobId);
+                        logger.info("Posting output_values collection with result {}", resultValue);
                         
-                        String jsonBody = String.format("{\"value\": %d}", resultValue);
+                        String collectionBody = String.format(
+                            "{\"type\": \"collection\", " +
+                            "\"creator_id\": \"%s\", " +
+                            "\"creator_type\": \"job\", " +
+                            "\"item_type\": \"float\", " +
+                            "\"items\": [{" +
+                                "\"name\": \"result\", " +
+                                "\"type\": \"float\", " +
+                                "\"value\": %d, " +
+                                "\"creator_id\": \"%s\", " +
+                                "\"creator_type\": \"job\"" +
+                            "}]}",
+                            jobId, resultValue, jobId
+                        );
                         
                         HttpRequest.Builder outputReqBuilder = HttpRequest.newBuilder()
                                 .uri(java.net.URI.create(outputUrl))
                                 .header("Content-Type", "application/json")
-                                .PUT(HttpRequest.BodyPublishers.ofString(jsonBody));
+                                .POST(HttpRequest.BodyPublishers.ofString(collectionBody));
                         
                         if (token != null) {
                             outputReqBuilder.header("Authorization", "Bearer " + token);
                         }
                         
                         HttpResponse<String> outputResp = httpClient.send(outputReqBuilder.build(), HttpResponse.BodyHandlers.ofString());
-                        
-                        if (outputResp.statusCode() >= 200 && outputResp.statusCode() < 300) {
-                            logger.info("Successfully sent result to EMPAIA (status {})", outputResp.statusCode());
-                        } else {
-                            logger.error("Failed to send result to EMPAIA: status {}, body: {}", 
-                                    outputResp.statusCode(), outputResp.body());
-                        }
+                        logger.info("Output response: status {}, body: {}", outputResp.statusCode(), outputResp.body());
                     }
                 } catch (Exception e) {
                     logger.error("Failed to send result to EMPAIA", e);
@@ -225,19 +233,6 @@ public class ScriptLauncherExtension implements QuPathExtension {
             logger.warn("Script content is empty");
         }
 
-        try {
-            HttpResponse<String> response = getMode(baseApi, jobId);
-            int status = response.statusCode();
-            String body = response.body();
-
-            if (status >= 400) {
-                logger.error("Request failed: {}", status);
-            } else {
-                logger.info("Response: {}", body);
-            }
-        } catch (IOException | InterruptedException e) {
-            logger.error("HTTP request failed", e);
-        }
     }
 
     /**

@@ -13,6 +13,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -23,7 +24,7 @@ import java.util.Map;
  * Minimal EMPAIA HTTP client for fetching WSI metadata and tiles.
  *
  * This implementation uses Jackson for JSON parsing and probes exactly
- * the `/inputs/my_wsi` path for autodiscovery as requested.
+ * the `/inputs/slide` path for autodiscovery as requested.
  */
 public class EmpaiaRemoteWsiClient {
 
@@ -44,7 +45,7 @@ public class EmpaiaRemoteWsiClient {
     }
 
     /**
-     * Autodiscovery now uses fetchMetadata("/inputs/my_wsi") directly; getWsiID()
+     * Autodiscovery now uses fetchMetadata("/inputs/slide") directly; getWsiID()
      * was removed to centralize id handling inside Metadata.
      */
 
@@ -62,15 +63,16 @@ public class EmpaiaRemoteWsiClient {
      * Fetch metadata from /{baseApi}/{job}/pixelmaps/{wsi}/info and fall back
      * to /{baseApi}/{job}/inputs/input_wsi when needed.
     */
-                 // (e.g. { "my_wsi": { "id": "..." } }) — handled by
+                 // (e.g. { "slide": { "id": "..." } }) — handled by
     public Metadata fetchMetadata() throws IOException, InterruptedException {
-        final String url = String.format("%s/%s/inputs/my_wsi", baseApi, jobId);
-        logger.info("Fetching metadata from {} (using inputs/my_wsi)", url);
+        final String url = String.format("%s/%s/inputs/slide", baseApi, jobId);
+        logger.info("Fetching metadata from {} (using inputs/slide)", url);
 
         HttpRequest req = newRequestBuilder(url).build();
         HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            throw new IOException("Failed to fetch metadata from inputs/my_wsi: " + resp.statusCode());
+            throw new IOException("Failed to fetch metadata from inputs/slide: " + resp.statusCode()
+                    + " - " + resp.body());
         }
 
         final String body = resp.body();
@@ -144,7 +146,8 @@ public class EmpaiaRemoteWsiClient {
         final HttpRequest request = newRequestBuilder(url).build();
         final HttpResponse<byte[]> resp = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            throw new IOException("Tile request failed: " + resp.statusCode());
+            throw new IOException("Tile request failed: " + resp.statusCode()
+                    + " - " + new String(resp.body(), StandardCharsets.UTF_8));
         }
 
         final byte[] data = resp.body();
@@ -166,7 +169,8 @@ public class EmpaiaRemoteWsiClient {
         final HttpRequest request = newRequestBuilder(url).build();
         final HttpResponse<byte[]> resp = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            throw new IOException("Region request failed: " + resp.statusCode());
+            throw new IOException("Region request failed: " + resp.statusCode()
+                    + " - " + new String(resp.body(), StandardCharsets.UTF_8));
         }
 
         final byte[] data = resp.body();
