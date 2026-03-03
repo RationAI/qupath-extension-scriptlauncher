@@ -26,3 +26,5 @@ Thumbs.db
 gradle/
 gradlew
 gradlew.bat
+src/main/java/qupath/lib/scripts/
+src/main/java/qupath/lib/staridist_models/
