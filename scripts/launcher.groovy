@@ -30,7 +30,7 @@ if (!baseApi || !jobId) {
 }
 
 // ── 1. Connect to EMPAIA and open WSI ───────────────────────────────────────
-def headers = token ? ["Authorization": "Bearer ${token}"] : [:]
+def headers = token ? ["Authorization": "Bearer ${token}".toString()] : [:]
 def client  = new EmpaiaRemoteWsiClient(baseApi, jobId, headers)
 
 def md = client.fetchMetadata()
