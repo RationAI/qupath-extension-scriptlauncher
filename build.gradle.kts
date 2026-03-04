@@ -24,6 +24,8 @@ dependencies {
     compileOnly(":qupath-extension-openslide-0.6.0")
     compileOnly("org.slf4j:slf4j-api:1.7.36")
     compileOnly("com.fasterxml.jackson.core:jackson-databind:2.15.2")
+    // Groovy — bundled with QuPath, needed to compile GroovyShell usage
+    compileOnly(":groovy-4.0.26")
     // EmpathAPI interface — resolved via includeBuild("../EmpathAPI") in settings.gradle.kts
     // Both JARs are installed in QuPath extensions at runtime.
     compileOnly("io.empath:empath-api:0.1.0")
