@@ -22,7 +22,7 @@ import groovy.lang.GroovyShell
 // ── Read configuration from environment ─────────────────────────────────────
 def baseApi = System.getenv("EMPAIA_BASE_API")
 def jobId   = System.getenv("EMPAIA_JOB_ID")
-def token   = System.getenv("EMPAIA_TOKEN")     // may be null
+def token   = System.getenv("EMPAIA_TOKEN")
 
 if (!baseApi || !jobId) {
     println "ERROR: EMPAIA_BASE_API and EMPAIA_JOB_ID must be set"
@@ -41,11 +41,6 @@ if (!md || md.width <= 0 || md.height <= 0 || !md.id) {
 
 def server    = new EmpaiaRemoteWsiImageServer(client, md.id)
 def imageData = new ImageData(server)
-
-// Make the image available to QuPath's native script context so that
-// getCurrentHierarchy(), getCurrentImageData() etc. work in the user script
-// if they're called through QP or set up in the binding below.
-setCurrentImageData(imageData)
 println "Opened EMPAIA WSI: ${md.id}"
 
 // ── 2. Create EmpathApiImpl ──────────────────────────────────────────────────
