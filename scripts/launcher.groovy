@@ -12,7 +12,7 @@
  *   EMPAIA_TOKEN     — bearer token for authenticated access
  */
 
-import qupath.ext.scriptlauncher.EmpathApiImpl
+import qupath.ext.scriptlauncher.EmpaiaScriptApi
 import qupath.lib.images.servers.remote.EmpaiaRemoteWsiClient
 import qupath.lib.images.servers.remote.EmpaiaRemoteWsiImageServer
 import qupath.lib.images.ImageData
@@ -43,8 +43,8 @@ def server    = new EmpaiaRemoteWsiImageServer(client, md.id)
 def imageData = new ImageData(server)
 println "Opened EMPAIA WSI: ${md.id}"
 
-// ── 2. Create EmpathApiImpl ──────────────────────────────────────────────────
-def api = new EmpathApiImpl(baseApi, jobId, token, md.id, java.net.http.HttpClient.newHttpClient())
+// ── 2. Create EmpaiaScriptApi ─────────────────────────────────────────────────
+def api = new EmpaiaScriptApi(baseApi, jobId, token, md.id, java.net.http.HttpClient.newHttpClient())
 
 // ── 3. Fetch input ROI and add to hierarchy ──────────────────────────────────
 def inputRoi = api.getInputRoi()

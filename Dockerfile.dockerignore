@@ -1,7 +1,7 @@
 # Build artifacts
-EmpathAPI/.gradle/
-EmpathAPI/build/
-EmpathAPI/bin/
+ScriptAPI/.gradle/
+ScriptAPI/build/
+ScriptAPI/bin/
 qupath-extension-scriptlauncher/.gradle/
 qupath-extension-scriptlauncher/build/
 qupath-extension-scriptlauncher/bin/

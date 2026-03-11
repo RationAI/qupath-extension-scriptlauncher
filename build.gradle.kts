@@ -26,9 +26,9 @@ dependencies {
     compileOnly("com.fasterxml.jackson.core:jackson-databind:2.15.2")
     // Groovy — bundled with QuPath, needed to compile GroovyShell usage
     compileOnly(":groovy-4.0.26")
-    // EmpathAPI interface — resolved via includeBuild("../EmpathAPI") in settings.gradle.kts
-    // Both JARs are installed in QuPath extensions at runtime.
-    compileOnly("io.empath:empath-api:0.1.0")
+    // ScriptAPI interface — resolved via includeBuild("../ScriptAPI") in settings.gradle.kts
+    // Both JARs are installed in QuPath lib/app at runtime.
+    compileOnly("qupath.ext:script-api:0.1.0")
 }
 tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE

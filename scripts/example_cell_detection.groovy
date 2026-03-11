@@ -4,7 +4,7 @@
  * Example EMPAIA analysis script — cell detection within the input ROI.
  *
  * Injected variables (do not import or instantiate these manually):
- *   api       — EmpathApi: post results and communicate with EMPAIA
+ *   api       — ScriptApi: post results and communicate with the platform
  *   imageData — ImageData: the opened EMPAIA WSI
  *   hierarchy — PathObjectHierarchy: QuPath object hierarchy
  *

@@ -72,8 +72,8 @@ public class ScriptLauncherExtension implements QuPathExtension {
             return;
         }
 
-        // ── 2. Create EmpathApiImpl ──────────────────────────────────────────
-        EmpathApiImpl api = new EmpathApiImpl(baseApi, jobId, token, wsiId,
+        // ── 2. Create EmpaiaScriptApi ────────────────────────────────────────
+        EmpaiaScriptApi api = new EmpaiaScriptApi(baseApi, jobId, token, wsiId,
                 HttpClient.newHttpClient());
 
         // ── 3. Fetch input ROI and add to hierarchy ──────────────────────────

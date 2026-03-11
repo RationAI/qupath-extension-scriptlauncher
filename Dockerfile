@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 1 — Build EmpathAPI and launcher JARs
+# Stage 1 — Build ScriptAPI and launcher JARs
 # Build context: /home/filip   (run: docker build -f qupath-extension-scriptlauncher/Dockerfile .)
 # ─────────────────────────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jdk AS builder
@@ -7,7 +7,7 @@ FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /build
 
 # Copy source trees
-COPY EmpathAPI/                        EmpathAPI/
+COPY ScriptAPI/                        ScriptAPI/
 COPY qupath-extension-scriptlauncher/  qupath-extension-scriptlauncher/
 
 # Copy local QuPath lib JARs needed for compilation (compile-only)
@@ -18,8 +18,8 @@ COPY QuPath-v0.6.0-Linux/QuPath/lib/app/  QuPath-v0.6.0-Linux/QuPath/lib/app/
 RUN mkdir -p /home/filip \
     && ln -s /build/QuPath-v0.6.0-Linux /home/filip/QuPath-v0.6.0-Linux
 
-# Build EmpathAPI then the launcher (composite build resolves EmpathAPI from source)
-RUN cd EmpathAPI && ./gradlew build -q
+# Build ScriptAPI then the launcher (composite build resolves ScriptAPI from source)
+RUN cd ScriptAPI && ./gradlew build -q
 RUN cd qupath-extension-scriptlauncher && ./gradlew build -q
 
 
@@ -40,11 +40,11 @@ RUN chmod +x /opt/QuPath/bin/QuPath
 # ── Install extension JARs into QuPath's app classpath ───────────────────────
 # QuPath uses a jpackage-generated launcher that reads an explicit classpath
 # from lib/app/QuPath.cfg — dropping JARs into lib/app/ alone is not enough.
-COPY --from=builder /build/EmpathAPI/build/libs/empath-api-0.1.0.jar \
+COPY --from=builder /build/ScriptAPI/build/libs/script-api-0.1.0.jar \
                     /opt/QuPath/lib/app/
 COPY --from=builder /build/qupath-extension-scriptlauncher/build/libs/qupath-extension-scriptlauncher-0.1.0.jar \
                     /opt/QuPath/lib/app/
-RUN sed -i '/^\[JavaOptions\]/i app.classpath=$APPDIR/empath-api-0.1.0.jar\napp.classpath=$APPDIR/qupath-extension-scriptlauncher-0.1.0.jar' \
+RUN sed -i '/^\[JavaOptions\]/i app.classpath=$APPDIR/script-api-0.1.0.jar\napp.classpath=$APPDIR/qupath-extension-scriptlauncher-0.1.0.jar' \
         /opt/QuPath/lib/app/QuPath.cfg
 
 # ── Install scripts ───────────────────────────────────────────────────────────

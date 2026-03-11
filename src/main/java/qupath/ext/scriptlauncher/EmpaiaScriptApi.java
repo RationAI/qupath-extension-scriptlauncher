@@ -1,6 +1,6 @@
 package qupath.ext.scriptlauncher;
 
-import io.empath.api.EmpathApi;
+import qupath.ext.script.api.ScriptApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.lib.objects.PathObject;
@@ -16,16 +16,16 @@ import java.net.http.HttpResponse;
 import java.util.Collection;
 
 /**
- * Concrete implementation of {@link EmpathApi} that communicates with the
+ * EMPAIA implementation of {@link ScriptApi} that communicates with the
  * EMPAIA App API over HTTP.
  *
  * <p>One instance covers the lifetime of a single job run. Construct it with
  * the job credentials obtained from the environment, then inject it into the
  * user script via a Groovy {@code Binding} under the name {@code api}.
  */
-public class EmpathApiImpl implements EmpathApi {
+public class EmpaiaScriptApi implements ScriptApi {
 
-    private static final Logger logger = LoggerFactory.getLogger(EmpathApiImpl.class);
+    private static final Logger logger = LoggerFactory.getLogger(EmpaiaScriptApi.class);
 
     private final HttpClient httpClient;
     private final String baseApi;
@@ -44,7 +44,7 @@ public class EmpathApiImpl implements EmpathApi {
      * @param wsiId      WSI UUID obtained from EMPAIA inputs
      * @param httpClient shared HTTP client
      */
-    public EmpathApiImpl(String baseApi, String jobId, String token, String wsiId, HttpClient httpClient) {
+    public EmpaiaScriptApi(String baseApi, String jobId, String token, String wsiId, HttpClient httpClient) {
         this.baseApi = baseApi;
         this.jobId = jobId;
         this.token = token;
@@ -53,7 +53,7 @@ public class EmpathApiImpl implements EmpathApi {
     }
 
     // -------------------------------------------------------------------------
-    // EmpathApi interface
+    // ScriptApi interface
     // -------------------------------------------------------------------------
 
     @Override
@@ -174,7 +174,7 @@ public class EmpathApiImpl implements EmpathApi {
 
     /**
      * Finalizes the job. Called by the launcher after the user script completes
-     * successfully. Not exposed on the public {@link EmpathApi} interface.
+     * successfully. Not exposed on the public {@link ScriptApi} interface.
      */
     public void finalizeJob() {
         try {
