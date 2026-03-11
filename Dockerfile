@@ -38,14 +38,12 @@ COPY QuPath-v0.6.0-Linux/QuPath/ /opt/QuPath/
 RUN chmod +x /opt/QuPath/bin/QuPath
 
 # ── Install extension JARs into QuPath's app classpath ───────────────────────
-# QuPath uses a jpackage-generated launcher that reads an explicit classpath
-# from lib/app/QuPath.cfg — dropping JARs into lib/app/ alone is not enough.
+# Placed in lib/app/ alongside all other QuPath JARs so they are on the
+# classpath when we invoke java directly with "/opt/QuPath/lib/app/*".
 COPY --from=builder /build/ScriptAPI/build/libs/script-api-0.1.0.jar \
                     /opt/QuPath/lib/app/
 COPY --from=builder /build/qupath-extension-scriptlauncher/build/libs/qupath-extension-scriptlauncher-0.1.0.jar \
                     /opt/QuPath/lib/app/
-RUN sed -i '/^\[JavaOptions\]/i app.classpath=$APPDIR/script-api-0.1.0.jar\napp.classpath=$APPDIR/qupath-extension-scriptlauncher-0.1.0.jar' \
-        /opt/QuPath/lib/app/QuPath.cfg
 
 # ── Install scripts ───────────────────────────────────────────────────────────
 COPY qupath-extension-scriptlauncher/scripts/ /scripts/
@@ -56,8 +54,8 @@ COPY qupath-extension-scriptlauncher/scripts/ /scripts/
 #   EMPAIA_JOB_ID    — EMPAIA job UUID
 #   EMPAIA_TOKEN     — bearer token (optional)
 #   QUPATH_SCRIPT    — path to analysis script, e.g. /scripts/example_cell_detection.groovy
-ENV PATH="/opt/QuPath/bin:${PATH}"
+ENV PATH="/opt/QuPath/lib/runtime/bin:${PATH}"
 
-ENTRYPOINT ["QuPath", "script", "/scripts/launcher.groovy"]
+ENTRYPOINT ["java", "-cp", "/opt/QuPath/lib/app/*", "qupath.ext.scriptlauncher.EmpaiaScriptManager"]
 
 
