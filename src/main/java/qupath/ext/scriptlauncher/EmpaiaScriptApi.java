@@ -1,19 +1,30 @@
 package qupath.ext.scriptlauncher;
 
+import groovy.lang.Binding;
+import groovy.lang.GroovyShell;
 import qupath.ext.script.api.ScriptApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.lib.images.ImageData;
+import qupath.lib.images.servers.ImageServer;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.regions.ImagePlane;
 import qupath.lib.roi.ROIs;
 import qupath.lib.roi.interfaces.ROI;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Collection;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * EMPAIA implementation of {@link ScriptApi} that communicates with the
@@ -37,6 +48,17 @@ public class EmpaiaScriptApi implements ScriptApi {
     private PathObject inputRoi;
     private boolean inputRoiFetched = false;
 
+    /** Progress fraction [0.0, 1.0] reported by the running script. */
+    private final AtomicReference<Double> progress = new AtomicReference<>(0.0);
+
+    /** Background executor for the Groovy script. */
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "script-runner");
+        t.setDaemon(true);
+        return t;
+    });
+    private Future<?> future;
+
     /**
      * @param baseApi    EMPAIA App API base URL, e.g. {@code https://host/api/app/v3}
      * @param jobId      EMPAIA job ID (UUID string)
@@ -55,6 +77,45 @@ public class EmpaiaScriptApi implements ScriptApi {
     // -------------------------------------------------------------------------
     // ScriptApi interface
     // -------------------------------------------------------------------------
+
+    // ── Script lifecycle (ScriptApi) ──────────────────────────────────────────
+
+    @Override
+    public void start(File script, ImageServer<?> server) {
+        if (future != null) {
+            throw new IllegalStateException("Runner has already been started");
+        }
+        future = executor.submit(() -> runScript(script, server));
+    }
+
+    @Override
+    public double getProgress() {
+        return progress.get();
+    }
+
+    @Override
+    public boolean isFinished() {
+        return future != null && future.isDone();
+    }
+
+    @Override
+    public Throwable getError() {
+        if (future == null || !future.isDone()) return null;
+        try {
+            future.get();
+            return null;
+        } catch (ExecutionException e) {
+            return e.getCause();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return e;
+        }
+    }
+
+    @Override
+    public void reportProgress(double fraction) {
+        progress.set(Math.max(0.0, Math.min(1.0, fraction)));
+    }
 
     @Override
     public PathObject getInputRoi() {
@@ -193,6 +254,28 @@ public class EmpaiaScriptApi implements ScriptApi {
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    private void runScript(File script, ImageServer<?> server) {
+        ImageData<?> imageData = new ImageData<>(server);
+        var inputRoi = getInputRoi();
+        if (inputRoi != null) {
+            imageData.getHierarchy().addObject(inputRoi);
+            logger.info("Added input_roi to hierarchy");
+        }
+
+        Binding binding = new Binding();
+        binding.setVariable("api",       this);
+        binding.setVariable("imageData", imageData);
+        binding.setVariable("hierarchy", imageData.getHierarchy());
+
+        logger.info("Starting script: {}", script.getName());
+        try {
+            new GroovyShell(getClass().getClassLoader(), binding).evaluate(script);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read script file: " + script.getName(), e);
+        }
+        logger.info("Script finished: {}", script.getName());
+    }
 
     private PathObject fetchInputRoi() {
         try {

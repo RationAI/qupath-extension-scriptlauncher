@@ -1,21 +1,34 @@
 package qupath.ext.scriptlauncher;
 
-import groovy.lang.Binding;
-import groovy.lang.GroovyShell;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.remote.EmpaiaRemoteWsiClient;
 import qupath.lib.images.servers.remote.EmpaiaRemoteWsiImageServer;
 
 import java.io.File;
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Map;
 
 /**
- * EmpaiaScriptManager — main entry point for headless EMPAIA job execution.
+ * EmpaiaScriptManager — EMPAIA platform manager and Docker entry point.
  *
- * <p>Replaces {@code launcher.groovy} as the Docker entrypoint. Invoked as:
+ * <p>Responsibilities:
+ * <ul>
+ *   <li>Read EMPAIA configuration from environment variables</li>
+ *   <li>Fetch WSI metadata from EMPAIA and open the image server</li>
+ *   <li>Create {@link EmpaiaScriptApi} (EMPAIA implementation of ScriptApi)</li>
+ *   <li>Hand control to {@link GroovyScriptRunner} and wait in a polling loop</li>
+ *   <li>Forward progress reported by the script to EMPAIA's progress endpoint</li>
+ *   <li>Finalize or fail the job when the runner signals completion</li>
+ * </ul>
+ *
+ * <p>This class knows about EMPAIA. It does NOT know about QuPath internals
+ * (ImageData, hierarchy, ROIs) — those are the runner's responsibility.
+ *
+ * <p>Invoked as:
  * <pre>
  *   java -cp "/opt/QuPath/lib/app/*" qupath.ext.scriptlauncher.EmpaiaScriptManager
  * </pre>
@@ -24,16 +37,18 @@ import java.util.Map;
  * <ul>
  *   <li>{@code EMPAIA_BASE_API} — EMPAIA App API base URL (e.g. https://host/api/app/v3)</li>
  *   <li>{@code EMPAIA_JOB_ID}   — EMPAIA job UUID</li>
- *   <li>{@code QUPATH_SCRIPT}   — absolute path to the user Groovy script to run</li>
+ *   <li>{@code QUPATH_SCRIPT}   — absolute path to the user Groovy script</li>
  * </ul>
  * Optional:
  * <ul>
- *   <li>{@code EMPAIA_TOKEN} — bearer token for authenticated access</li>
+ *   <li>{@code EMPAIA_TOKEN}         — bearer token for authenticated access</li>
+ *   <li>{@code EMPAIA_POLL_INTERVAL} — progress poll interval in ms (default: 2000)</li>
  * </ul>
  */
 public class EmpaiaScriptManager {
 
     private static final Logger logger = LoggerFactory.getLogger(EmpaiaScriptManager.class);
+    private static final long DEFAULT_POLL_INTERVAL_MS = 2_000;
 
     public static void main(String[] args) {
         // ── 1. Read configuration from environment ────────────────────────────
@@ -41,6 +56,7 @@ public class EmpaiaScriptManager {
         String jobId      = System.getenv("EMPAIA_JOB_ID");
         String token      = System.getenv("EMPAIA_TOKEN");
         String scriptPath = System.getenv("QUPATH_SCRIPT");
+        long   pollMs     = parseLongEnv("EMPAIA_POLL_INTERVAL", DEFAULT_POLL_INTERVAL_MS);
 
         if (baseApi == null || jobId == null) {
             logger.error("EMPAIA_BASE_API and EMPAIA_JOB_ID must be set");
@@ -50,76 +66,116 @@ public class EmpaiaScriptManager {
             logger.error("QUPATH_SCRIPT must be set");
             System.exit(1);
         }
-
         File scriptFile = new File(scriptPath);
         if (!scriptFile.exists()) {
             logger.error("Script file not found: {}", scriptPath);
             System.exit(1);
         }
 
-        // ── 2. Connect to EMPAIA and open WSI ─────────────────────────────────
+        HttpClient httpClient = HttpClient.newHttpClient();
+
+        // ── 2. Fetch WSI metadata from EMPAIA ────────────────────────────────
         Map<String, String> headers = token != null
                 ? Map.of("Authorization", "Bearer " + token)
                 : Map.of();
 
-        EmpaiaRemoteWsiClient client = new EmpaiaRemoteWsiClient(baseApi, jobId, headers);
+        EmpaiaRemoteWsiClient empaiaClient = new EmpaiaRemoteWsiClient(baseApi, jobId, headers);
         EmpaiaRemoteWsiClient.Metadata md;
         try {
-            md = client.fetchMetadata();
+            md = empaiaClient.fetchMetadata();
         } catch (Exception e) {
             logger.error("Failed to fetch WSI metadata from EMPAIA", e);
             System.exit(1);
             return;
         }
-
         if (md == null || md.width <= 0 || md.height <= 0 || md.id == null) {
             logger.error("Invalid WSI metadata from EMPAIA");
             System.exit(1);
+            return;
         }
+        logger.info("Fetched WSI metadata: id={} size={}x{}", md.id, md.width, md.height);
 
-        ImageData<?> imageData;
+        // ── 3. Open image server and create ScriptApi ─────────────────────────
+        EmpaiaRemoteWsiImageServer server;
         try {
-            EmpaiaRemoteWsiImageServer server = new EmpaiaRemoteWsiImageServer(client, md.id);
-            imageData = new ImageData<>(server);
+            server = new EmpaiaRemoteWsiImageServer(empaiaClient, md.id);
         } catch (Exception e) {
             logger.error("Failed to create image server for WSI {}", md.id, e);
             System.exit(1);
             return;
         }
-        logger.info("Opened EMPAIA WSI: {}", md.id);
 
-        // ── 3. Create EmpaiaScriptApi  ─────────────────────────────────────────
-        EmpaiaScriptApi api = new EmpaiaScriptApi(
-                baseApi, jobId, token, md.id, HttpClient.newHttpClient());
+        EmpaiaScriptApi api = new EmpaiaScriptApi(baseApi, jobId, token, md.id, httpClient);
 
-        // ── 4. Fetch input ROI and add to hierarchy ───────────────────────────
-        var inputRoi = api.getInputRoi();
-        if (inputRoi != null) {
-            imageData.getHierarchy().addObject(inputRoi);
-            logger.info("Added input_roi to hierarchy");
+        // ── 4. Start the script ───────────────────────────────────────────────
+        api.start(scriptFile, server);
+        logger.info("Script started — polling every {}ms", pollMs);
+
+        // ── 5. Poll loop — forward progress to EMPAIA until done ─────────────
+        int lastPostedPercent = -1;
+        while (!api.isFinished()) {
+            int percent = (int) Math.round(api.getProgress() * 100);
+            if (percent != lastPostedPercent) {
+                postProgress(baseApi, jobId, token, percent, httpClient);
+                lastPostedPercent = percent;
+            }
+            try {
+                Thread.sleep(pollMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
 
-        // ── 5. Execute user script with ScriptApi injected into Groovy binding ─
-        // 'api', 'imageData' and 'hierarchy' are available in the script as
-        // plain variables — no imports required. The class loader is shared so
-        // all QuPath and extension classes are accessible from the script.
-        Binding binding = new Binding();
-        binding.setVariable("api",       api);
-        binding.setVariable("imageData", imageData);
-        binding.setVariable("hierarchy", imageData.getHierarchy());
-
-        try {
-            new GroovyShell(EmpaiaScriptManager.class.getClassLoader(), binding)
-                    .evaluate(scriptFile);
-            logger.info("User script completed successfully");
-        } catch (Exception e) {
-            api.fail("Script execution failed: " + e.getMessage());
-            logger.error("Script execution failed", e);
+        // ── 6. Finalize or fail ───────────────────────────────────────────────
+        Throwable error = api.getError();
+        if (error != null) {
+            logger.error("Script execution failed", error);
+            api.fail("Script execution failed: " + error.getMessage());
             System.exit(1);
         }
 
-        // ── 6. Finalize the EMPAIA job ────────────────────────────────────────
+        postProgress(baseApi, jobId, token, 100, httpClient);
         api.finalizeJob();
         logger.info("Job finalized");
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * POST /{jobId}/progress with body {"progress": <percent>}
+     */
+    private static void postProgress(String baseApi, String jobId, String token,
+                                     int percent, HttpClient httpClient) {
+        try {
+            String url  = String.format("%s/%s/progress", baseApi, jobId);
+            String body = String.format("{\"progress\":%d}", percent);
+
+            HttpRequest.Builder req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+            if (token != null) req.header("Authorization", "Bearer " + token);
+
+            HttpResponse<String> resp = httpClient.send(req.build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() >= 300) {
+                logger.warn("postProgress returned {}: {}", resp.statusCode(), resp.body());
+            } else {
+                logger.debug("postProgress {}% → {}", percent, resp.statusCode());
+            }
+        } catch (Exception e) {
+            logger.warn("postProgress failed (non-fatal): {}", e.getMessage());
+        }
+    }
+
+    private static long parseLongEnv(String name, long defaultValue) {
+        String val = System.getenv(name);
+        if (val == null) return defaultValue;
+        try {
+            return Long.parseLong(val);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 }
