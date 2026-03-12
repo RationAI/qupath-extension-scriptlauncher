@@ -203,7 +203,6 @@ public class EmpaiaScriptApi implements ScriptApi {
                     "\"items\":[%s]}",
                     jobId, wsiId, itemsBuilder);
 
-            logger.info("postAnnotations payload: {}", body);
             int status = post(outputUrl, body);
             if (status >= 300) {
                 logger.error("postAnnotations failed: key={} status={}", outputKey, status);

@@ -19,6 +19,7 @@ import qupath.lib.scripting.QP
 
 // ── 1. Get the input ROI ─────────────────────────────────────────────────────
 // api.getInputRoi() returns a PathObject annotation (rectangle) or null.
+api.reportProgress(0.0)
 def inputRoi = api.getInputRoi()
 if (inputRoi == null) {
     // No ROI provided — analyse the entire slide
@@ -29,6 +30,7 @@ if (inputRoi == null) {
     hierarchy.getSelectionModel().setSelectedObject(inputRoi)
     println "Using input_roi: ${inputRoi.getROI()}"
 }
+api.reportProgress(0.1)
 
 // ── 2. Run cell detection ────────────────────────────────────────────────────
 // Uses QuPath's StarDist-style simple cell detection as a baseline.
@@ -50,6 +52,7 @@ QP.runPlugin(
     '"smoothBoundaries": true, ' +
     '"makeMeasurements": false}'
 )
+api.reportProgress(0.8)
 
 // ── 3. Collect detections ────────────────────────────────────────────────────
 def detections = hierarchy.getDetectionObjects()
@@ -57,4 +60,6 @@ println "Detected ${detections.size()} cells"
 
 // ── 4. Post results to EMPAIA ────────────────────────────────────────────────
 api.postAnnotations("output_annotations", detections)
+api.reportProgress(0.9)
 api.postValues("output_values", [detections.size()])
+api.reportProgress(1.0)

@@ -112,12 +112,13 @@ public class EmpaiaScriptManager {
         logger.info("Script started — polling every {}ms", pollMs);
 
         // ── 5. Poll loop — forward progress to EMPAIA until done ─────────────
-        int lastPostedPercent = -1;
+        double lastPostedProgress = -1;
         while (!api.isFinished()) {
-            int percent = (int) Math.round(api.getProgress() * 100);
-            if (percent != lastPostedPercent) {
-                postProgress(baseApi, jobId, token, percent, httpClient);
-                lastPostedPercent = percent;
+            double progress = api.getProgress();
+            if (progress != lastPostedProgress) {
+                logger.info("Script progress: {}%", String.format("%.2f", progress * 100));
+                putProgress(baseApi, jobId, token, progress, httpClient);
+                lastPostedProgress = progress;
             }
             try {
                 Thread.sleep(pollMs);
@@ -135,7 +136,7 @@ public class EmpaiaScriptManager {
             System.exit(1);
         }
 
-        postProgress(baseApi, jobId, token, 100, httpClient);
+        putProgress(baseApi, jobId, token, 1.0, httpClient);
         api.finalizeJob();
         logger.info("Job finalized");
     }
@@ -143,29 +144,29 @@ public class EmpaiaScriptManager {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
-     * POST /{jobId}/progress with body {"progress": <percent>}
+     * PUT /{jobId}/progress with body {"progress": <fraction>} where fraction is in [0.0, 1.0]
      */
-    private static void postProgress(String baseApi, String jobId, String token,
-                                     int percent, HttpClient httpClient) {
+    private static void putProgress(String baseApi, String jobId, String token,
+                                     double progress, HttpClient httpClient) {
         try {
             String url  = String.format("%s/%s/progress", baseApi, jobId);
-            String body = String.format("{\"progress\":%d}", percent);
+            String body = String.format("{\"progress\":%s}", progress);
 
             HttpRequest.Builder req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body));
+                    .PUT(HttpRequest.BodyPublishers.ofString(body));
             if (token != null) req.header("Authorization", "Bearer " + token);
 
             HttpResponse<String> resp = httpClient.send(req.build(),
                     HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() >= 300) {
-                logger.warn("postProgress returned {}: {}", resp.statusCode(), resp.body());
+                logger.warn("putProgress returned {}: {}", resp.statusCode(), resp.body());
             } else {
-                logger.debug("postProgress {}% → {}", percent, resp.statusCode());
+                logger.info("Progress PUT to EMPAIA: {} -> {}", progress, resp.statusCode());
             }
         } catch (Exception e) {
-            logger.warn("postProgress failed (non-fatal): {}", e.getMessage());
+            logger.warn("putProgress failed (non-fatal): {}", e.getMessage());
         }
     }
 
