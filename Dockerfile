@@ -26,12 +26,7 @@ RUN cd qupath-extension-scriptlauncher && ./gradlew build -q
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 — Runtime image
 # ─────────────────────────────────────────────────────────────────────────────
-FROM ubuntu:22.04
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libfreetype6 \
-        libfontconfig1 \
-    && rm -rf /var/lib/apt/lists/*
+FROM eclipse-temurin:21-jre
 
 # ── Copy local QuPath installation ───────────────────────────────────────────
 COPY QuPath-v0.6.0-Linux/QuPath/ /opt/QuPath/
@@ -54,8 +49,6 @@ COPY qupath-extension-scriptlauncher/scripts/ /scripts/
 #   EMPAIA_JOB_ID    — EMPAIA job UUID
 #   EMPAIA_TOKEN     — bearer token (optional)
 #   QUPATH_SCRIPT    — path to analysis script, e.g. /scripts/example_cell_detection.groovy
-ENV PATH="/opt/QuPath/lib/runtime/bin:${PATH}"
-
 ENTRYPOINT ["java", "-cp", "/opt/QuPath/lib/app/*", "qupath.ext.scriptlauncher.EmpaiaScriptManager"]
 
 
