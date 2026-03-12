@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import qupath.lib.images.servers.remote.EmpaiaRemoteWsiClient;
 import qupath.lib.images.servers.remote.EmpaiaRemoteWsiImageServer;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -37,12 +39,12 @@ import java.util.Map;
  * <ul>
  *   <li>{@code EMPAIA_BASE_API} — EMPAIA App API base URL (e.g. https://host/api/app/v3)</li>
  *   <li>{@code EMPAIA_JOB_ID}   — EMPAIA job UUID</li>
- *   <li>{@code QUPATH_SCRIPT}   — absolute path to the user Groovy script</li>
  * </ul>
  * Optional:
  * <ul>
  *   <li>{@code EMPAIA_TOKEN}         — bearer token for authenticated access</li>
  *   <li>{@code EMPAIA_POLL_INTERVAL} — progress poll interval in ms (default: 2000)</li>
+ *   <li>{@code QUPATH_SCRIPTS_DIR}   — directory containing Groovy scripts (default: /scripts)</li>
  * </ul>
  */
 public class EmpaiaScriptManager {
@@ -55,26 +57,33 @@ public class EmpaiaScriptManager {
         String baseApi    = System.getenv("EMPAIA_BASE_API");
         String jobId      = System.getenv("EMPAIA_JOB_ID");
         String token      = System.getenv("EMPAIA_TOKEN");
-        String scriptPath = System.getenv("QUPATH_SCRIPT");
+        String scriptsDir = "/scripts";
         long   pollMs     = parseLongEnv("EMPAIA_POLL_INTERVAL", DEFAULT_POLL_INTERVAL_MS);
 
         if (baseApi == null || jobId == null) {
             logger.error("EMPAIA_BASE_API and EMPAIA_JOB_ID must be set");
             System.exit(1);
         }
-        if (scriptPath == null) {
-            logger.error("QUPATH_SCRIPT must be set");
-            System.exit(1);
-        }
-        File scriptFile = new File(scriptPath);
-        if (!scriptFile.exists()) {
-            logger.error("Script file not found: {}", scriptPath);
-            System.exit(1);
-        }
 
         HttpClient httpClient = HttpClient.newHttpClient();
 
-        // ── 2. Fetch WSI metadata from EMPAIA ────────────────────────────────
+        // ── 2. Fetch script name from EMPAIA inputs/script ────────────────────
+        String scriptName;
+        try {
+            scriptName = fetchScriptName(baseApi, jobId, token, httpClient);
+        } catch (Exception e) {
+            logger.error("Failed to fetch script name from EMPAIA inputs/script", e);
+            System.exit(1);
+            return;
+        }
+        File scriptFile = new File(scriptsDir, scriptName + ".groovy");
+        if (!scriptFile.exists()) {
+            logger.error("Script file not found: {}", scriptFile.getAbsolutePath());
+            System.exit(1);
+        }
+        logger.info("Using script: {}", scriptFile.getAbsolutePath());
+
+        // ── 3. Fetch WSI metadata from EMPAIA ────────────────────────────────
         Map<String, String> headers = token != null
                 ? Map.of("Authorization", "Bearer " + token)
                 : Map.of();
@@ -95,7 +104,7 @@ public class EmpaiaScriptManager {
         }
         logger.info("Fetched WSI metadata: id={} size={}x{}", md.id, md.width, md.height);
 
-        // ── 3. Open image server and create ScriptApi ─────────────────────────
+        // ── 4. Open image server and create ScriptApi ─────────────────────────
         EmpaiaRemoteWsiImageServer server;
         try {
             server = new EmpaiaRemoteWsiImageServer(empaiaClient, md.id);
@@ -107,11 +116,11 @@ public class EmpaiaScriptManager {
 
         EmpaiaScriptApi api = new EmpaiaScriptApi(baseApi, jobId, token, md.id, httpClient);
 
-        // ── 4. Start the script ───────────────────────────────────────────────
+        // ── 5. Start the script ───────────────────────────────────────────────
         api.start(scriptFile, server);
         logger.info("Script started — polling every {}ms", pollMs);
 
-        // ── 5. Poll loop — forward progress to EMPAIA until done ─────────────
+        // ── 6. Poll loop — forward progress to EMPAIA until done ─────────────
         double lastPostedProgress = -1;
         while (!api.isFinished()) {
             double progress = api.getProgress();
@@ -128,7 +137,7 @@ public class EmpaiaScriptManager {
             }
         }
 
-        // ── 6. Finalize or fail ───────────────────────────────────────────────
+        // ── 7. Finalize or fail ───────────────────────────────────────────────
         Throwable error = api.getError();
         if (error != null) {
             logger.error("Script execution failed", error);
@@ -142,6 +151,36 @@ public class EmpaiaScriptManager {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * GET /{jobId}/inputs/script and return the script name (without .groovy extension).
+     * Extracts the "value" field from the response JSON.
+     */
+    private static String fetchScriptName(String baseApi, String jobId, String token,
+                                          HttpClient httpClient) throws Exception {
+        String url = String.format("%s/%s/inputs/script", baseApi, jobId);
+        logger.info("Fetching script name from {}", url);
+
+        HttpRequest.Builder req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .GET();
+        if (token != null) req.header("Authorization", "Bearer " + token);
+
+        HttpResponse<String> resp = httpClient.send(req.build(), HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            throw new Exception("inputs/script returned HTTP " + resp.statusCode() + ": " + resp.body());
+        }
+
+        JsonNode node = new ObjectMapper().readTree(resp.body());
+        if (node.has("value") && node.get("value").isTextual()) {
+            String name = node.get("value").asText().trim();
+            if (!name.isEmpty()) {
+                logger.info("Script name from EMPAIA: {}", name);
+                return name;
+            }
+        }
+        throw new Exception("Could not extract script name from inputs/script response: " + resp.body());
+    }
 
     /**
      * PUT /{jobId}/progress with body {"progress": <fraction>} where fraction is in [0.0, 1.0]
