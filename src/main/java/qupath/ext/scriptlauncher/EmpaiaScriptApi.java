@@ -266,6 +266,10 @@ public class EmpaiaScriptApi implements ScriptApi {
         binding.setVariable("api",       this);
         binding.setVariable("imageData", imageData);
         binding.setVariable("hierarchy", imageData.getHierarchy());
+        binding.setVariable("server", imageData.getServer());
+        binding.setVariable("selectionModel", imageData.getHierarchy().getSelectionModel());
+        binding.setVariable("project", null);
+        binding.setVariable("args", new String[0]);
 
         logger.info("Starting script: {}", script.getName());
         try {
