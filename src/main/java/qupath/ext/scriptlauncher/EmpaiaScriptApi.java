@@ -1,5 +1,7 @@
 package qupath.ext.scriptlauncher;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import groovy.lang.Binding;
 import groovy.lang.GroovyShell;
 import qupath.ext.script.api.ScriptApi;
@@ -19,7 +21,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class EmpaiaScriptApi implements ScriptApi {
 
     private static final Logger logger = LoggerFactory.getLogger(EmpaiaScriptApi.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final HttpClient httpClient;
     private final String baseApi;
@@ -131,27 +138,27 @@ public class EmpaiaScriptApi implements ScriptApi {
         try {
             String outputUrl = String.format("%s/%s/outputs/%s", baseApi, jobId, outputKey);
 
-            StringBuilder itemsBuilder = new StringBuilder("[");
-            boolean first = true;
+            List<Map<String, Object>> items = new ArrayList<>();
             for (Number v : values) {
-                if (!first) itemsBuilder.append(",");
-                itemsBuilder.append(String.format(
-                        "{\"name\":\"result\",\"type\":\"float\",\"value\":%s," +
-                        "\"creator_id\":\"%s\",\"creator_type\":\"job\"}",
-                        String.valueOf(v.doubleValue()), jobId));
-                first = false;
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", "result");
+                item.put("type", "float");
+                item.put("value", v.doubleValue());
+                item.put("creator_id", jobId);
+                item.put("creator_type", "job");
+                items.add(item);
             }
-            itemsBuilder.append("]");
 
-            // PostFloatCollection: "type" must be the literal "collection";
-            // "item_type":"float" routes the union discriminator.
-            String body = String.format(
-                    "{\"type\":\"collection\",\"creator_id\":\"%s\",\"creator_type\":\"job\"," +
-                    "\"item_type\":\"float\",\"reference_id\":\"%s\",\"reference_type\":\"wsi\"," +
-                    "\"items\":%s}",
-                    jobId, wsiId, itemsBuilder);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("type", "collection");
+            body.put("creator_id", jobId);
+            body.put("creator_type", "job");
+            body.put("item_type", "float");
+            body.put("reference_id", wsiId);
+            body.put("reference_type", "wsi");
+            body.put("items", items);
 
-            int status = post(outputUrl, body);
+            int status = post(outputUrl, toJson(body));
             if (status >= 300) {
                 logger.error("postValues failed: key={} status={}", outputKey, status);
             } else {
@@ -167,43 +174,42 @@ public class EmpaiaScriptApi implements ScriptApi {
         try {
             String outputUrl = String.format("%s/%s/outputs/%s", baseApi, jobId, outputKey);
 
-            StringBuilder itemsBuilder = new StringBuilder();
+            List<Map<String, Object>> items = new ArrayList<>();
             int count = 0;
             for (PathObject detection : detections) {
                 ROI roi = detection.getROI();
                 if (roi == null || roi.getAllPoints().isEmpty()) continue;
 
                 var points = roi.getAllPoints();
-                StringBuilder coordsBuilder = new StringBuilder("[");
+                List<List<Integer>> coordinates = new ArrayList<>();
                 for (int i = 0; i < points.size(); i++) {
-                    if (i > 0) coordsBuilder.append(",");
                     var p = points.get(i);
-                    // EMPAIA requires integer pixel coordinates
-                    coordsBuilder.append(String.format("[%d,%d]",
-                            Math.round(p.getX()), Math.round(p.getY())));
+                    coordinates.add(List.of((int)Math.round(p.getX()), (int)Math.round(p.getY())));
                 }
-                coordsBuilder.append("]");
 
-                if (count > 0) itemsBuilder.append(",");
-                // PostPolygonAnnotation: "type":"polygon"
-                itemsBuilder.append(String.format(
-                        "{\"name\":\"detection_%d\",\"type\":\"polygon\"," +
-                        "\"creator_id\":\"%s\",\"creator_type\":\"job\"," +
-                        "\"reference_id\":\"%s\",\"reference_type\":\"wsi\"," +
-                        "\"npp_created\":1000,\"coordinates\":%s}",
-                        count, jobId, wsiId, coordsBuilder));
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", "detection_" + count);
+                item.put("type", "polygon");
+                item.put("creator_id", jobId);
+                item.put("creator_type", "job");
+                item.put("reference_id", wsiId);
+                item.put("reference_type", "wsi");
+                item.put("npp_created", 1000);
+                item.put("coordinates", coordinates);
+                items.add(item);
                 count++;
             }
 
-            // PostPolygonCollection: "type" must be "collection";
-            // "item_type":"polygon" routes the union discriminator.
-            String body = String.format(
-                    "{\"type\":\"collection\",\"creator_id\":\"%s\",\"creator_type\":\"job\"," +
-                    "\"item_type\":\"polygon\",\"reference_id\":\"%s\",\"reference_type\":\"wsi\"," +
-                    "\"items\":[%s]}",
-                    jobId, wsiId, itemsBuilder);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("type", "collection");
+            body.put("creator_id", jobId);
+            body.put("creator_type", "job");
+            body.put("item_type", "polygon");
+            body.put("reference_id", wsiId);
+            body.put("reference_type", "wsi");
+            body.put("items", items);
 
-            int status = post(outputUrl, body);
+            int status = post(outputUrl, toJson(body));
             if (status >= 300) {
                 logger.error("postAnnotations failed: key={} status={}", outputKey, status);
             } else {
@@ -218,9 +224,7 @@ public class EmpaiaScriptApi implements ScriptApi {
     public void fail(String message) {
         try {
             String url = String.format("%s/%s/failure", baseApi, jobId);
-            String body = String.format(
-                    "{\"user_message\":\"%s\"}",
-                    message.replace("\"", "'"));
+            String body = toJson(Map.of("user_message", message));
             int status = put(url, body);
             logger.info("fail reported: status={}", status);
         } catch (Exception e) {
@@ -306,25 +310,27 @@ public class EmpaiaScriptApi implements ScriptApi {
     }
 
     private PathObject parseRoiJson(String json) {
-        int upperLeftStart = json.indexOf("\"upper_left\":[") + 14;
-        int upperLeftEnd = json.indexOf("]", upperLeftStart);
-        String[] coords = json.substring(upperLeftStart, upperLeftEnd).split(",");
-        double x = Double.parseDouble(coords[0].trim());
-        double y = Double.parseDouble(coords[1].trim());
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode upperLeft = root.path("upper_left");
+            double x = upperLeft.path(0).asDouble();
+            double y = upperLeft.path(1).asDouble();
+            double width = root.path("width").asDouble();
+            double height = root.path("height").asDouble();
 
-        int widthStart = json.indexOf("\"width\":") + 8;
-        int widthEnd = json.indexOf(",", widthStart);
-        double width = Double.parseDouble(json.substring(widthStart, widthEnd).trim());
+            ROI roi = ROIs.createRectangleROI(x, y, width, height, ImagePlane.getDefaultPlane());
+            PathObject annotation = PathObjects.createAnnotationObject(roi);
+            annotation.setName("input_roi");
+            logger.info("Parsed input_roi: x={} y={} w={} h={}", x, y, width, height);
+            return annotation;
+        } catch (Exception e) {
+            logger.warn("Failed to parse input_roi JSON", e);
+            return null;
+        }
+    }
 
-        int heightStart = json.indexOf("\"height\":") + 9;
-        int heightEnd = json.indexOf(",", heightStart);
-        double height = Double.parseDouble(json.substring(heightStart, heightEnd).trim());
-
-        ROI roi = ROIs.createRectangleROI(x, y, width, height, ImagePlane.getDefaultPlane());
-        PathObject annotation = PathObjects.createAnnotationObject(roi);
-        annotation.setName("input_roi");
-        logger.info("Parsed input_roi: x={} y={} w={} h={}", x, y, width, height);
-        return annotation;
+    private String toJson(Object value) throws IOException {
+        return objectMapper.writeValueAsString(value);
     }
 
     private int post(String url, String body) throws Exception {

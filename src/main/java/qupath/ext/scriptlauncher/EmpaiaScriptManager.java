@@ -51,6 +51,7 @@ public class EmpaiaScriptManager {
 
     private static final Logger logger = LoggerFactory.getLogger(EmpaiaScriptManager.class);
     private static final long DEFAULT_POLL_INTERVAL_MS = 2_000;
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public static void main(String[] args) {
         // ── 1. Read configuration from environment ────────────────────────────
@@ -171,7 +172,7 @@ public class EmpaiaScriptManager {
             throw new Exception("inputs/script returned HTTP " + resp.statusCode() + ": " + resp.body());
         }
 
-        JsonNode node = new ObjectMapper().readTree(resp.body());
+        JsonNode node = objectMapper.readTree(resp.body());
         if (node.has("value") && node.get("value").isTextual()) {
             String name = node.get("value").asText().trim();
             if (!name.isEmpty()) {
@@ -189,7 +190,7 @@ public class EmpaiaScriptManager {
                                      double progress, HttpClient httpClient) {
         try {
             String url  = String.format("%s/%s/progress", baseApi, jobId);
-            String body = String.format("{\"progress\":%s}", progress);
+            String body = objectMapper.writeValueAsString(Map.of("progress", progress));
 
             HttpRequest.Builder req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
