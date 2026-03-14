@@ -1,6 +1,6 @@
 import qupath.ext.stardist.StarDist2D
 
-// 'api', 'imageData', 'hierarchy' are injected by launcher.groovy
+// 'api', 'imageData', 'hierarchy' are injected by the Java script runner
 
 def inputRoi = api.getInputRoi()
 if (inputRoi == null) {
