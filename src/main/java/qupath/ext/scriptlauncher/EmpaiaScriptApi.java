@@ -427,7 +427,7 @@ public class EmpaiaScriptApi implements ScriptApi {
             ROI roi = ROIs.createRectangleROI(x, y, width, height, ImagePlane.getDefaultPlane());
             PathObject annotation = PathObjects.createAnnotationObject(roi);
             annotation.setName("input_roi");
-            logger.info("Parsed input_roi: x={} y={} w={} h={}", x, y, width, height);
+            logger.trace("Parsed input_roi: x={} y={} w={} h={}", x, y, width, height);
             return annotation;
         } catch (Exception e) {
             logger.warn("Failed to parse input_roi JSON", e);
