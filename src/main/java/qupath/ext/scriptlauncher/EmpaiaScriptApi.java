@@ -399,7 +399,7 @@ public class EmpaiaScriptApi implements ScriptApi {
 
             if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
                 logger.info("Fetched input_roi: {}", resp.body());
-                return parseRoiJson(resp.body());
+                return parseRectangleRoiJson(resp.body());
             } else {
                 logger.warn("input_roi fetch returned status {}", resp.statusCode());
             }
@@ -415,7 +415,7 @@ public class EmpaiaScriptApi implements ScriptApi {
      * @param json EMPAIA ROI response body
      * @return parsed annotation object, or {@code null} when parsing fails
      */
-    private PathObject parseRoiJson(String json) {
+    private PathObject parseRectangleRoiJson(String json) {
         try {
             JsonNode root = objectMapper.readTree(json);
             JsonNode upperLeft = root.path("upper_left");
