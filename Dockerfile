@@ -39,6 +39,7 @@ COPY --from=builder /build/ScriptAPI/build/libs/script-api-0.1.0.jar \
                     /opt/QuPath/lib/app/
 COPY --from=builder /build/qupath-extension-scriptlauncher/build/libs/qupath-extension-scriptlauncher-0.1.0.jar \
                     /opt/QuPath/lib/app/
+COPY ["QuPath/v0.6/extensions/catalogs/QuPath catalog/QuPath StarDist extension/v0.6.0/main-jar/qupath-extension-stardist-0.6.0.jar", "/opt/QuPath/lib/app/"]
 
 # ── Install scripts ───────────────────────────────────────────────────────────
 COPY qupath-extension-scriptlauncher/scripts/ /scripts/

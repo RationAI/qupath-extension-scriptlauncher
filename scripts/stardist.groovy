@@ -11,15 +11,11 @@ if (inputRoi == null)
 else
     println "Using input_roi: ${inputRoi.getROI()}"
 
-def defaultModelPath = "/scripts/stardist_models/dsb2018_heavy_augment.pb"
-
-def modelPath = "/scripts/stardist_models/dsb2018_heavy_augment.pb"
+def modelPath = "/scripts/stardist_models/he_heavy_augment.pb"
 
 if (!Files.exists(Paths.get(modelPath))) {
-
-        api.fail("Model path does not exist: ${modelPath}")
-        return
-    }
+    api.failJob("Model path does not exist: ${modelPath}")
+    return
 }
 
 println "Using StarDist model: ${modelPath}"
