@@ -142,7 +142,7 @@ public class EmpaiaScriptManager {
         Throwable error = api.getError();
         if (error != null) {
             logger.error("Script execution failed", error);
-            api.fail("Script execution failed: " + error.getMessage());
+            api.failJob("Script execution failed: " + error.getMessage());
             System.exit(1);
         }
 

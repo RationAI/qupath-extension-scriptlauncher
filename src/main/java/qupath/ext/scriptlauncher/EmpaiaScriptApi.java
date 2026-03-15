@@ -291,16 +291,24 @@ public class EmpaiaScriptApi implements ScriptApi {
      * Reports a user-visible failure message for the current EMPAIA job.
      *
      * @param message failure reason shown to the user
+     * @return {@code true} if the failure report PUT returned a 2xx status, otherwise {@code false}
      */
     @Override
-    public void fail(String message) {
+    public boolean failJob(String message) {
         try {
             String url = String.format("%s/%s/failure", baseApi, jobId);
             String body = toJson(Map.of("user_message", message));
             int status = put(url, body);
-            logger.info("fail reported: status={}", status);
+            if (status >= 200 && status < 300) {
+                logger.info("fail reported successfully: status={}", status);
+                return true;
+            } else {
+                logger.error("fail report failed: status={}", status);
+                return false;
+            }
         } catch (Exception e) {
             logger.error("fail reporting exception", e);
+            return false;
         }
     }
 
@@ -311,18 +319,23 @@ public class EmpaiaScriptApi implements ScriptApi {
     /**
      * Finalizes the job. Called by the launcher after the user script completes
      * successfully. Not exposed on the public {@link ScriptApi} interface.
+     *
+     * @return {@code true} if the finalize PUT returned a 2xx status, otherwise {@code false}
      */
-    public void finalizeJob() {
+    public boolean finalizeJob() {
         try {
             String url = String.format("%s/%s/finalize", baseApi, jobId);
             int status = put(url, "{}");
-            if (status >= 300) {
-                logger.error("finalizeJob failed: status={}", status);
-            } else {
+            if (status >= 200 && status < 300) {
                 logger.info("finalizeJob OK: status={}", status);
+                return true;
+            } else {
+                logger.error("finalizeJob failed: status={}", status);
+                return false;
             }
         } catch (Exception e) {
             logger.error("finalizeJob exception", e);
+            return false;
         }
     }
 

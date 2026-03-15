@@ -13,7 +13,7 @@ else
 
 def defaultModelPath = "/scripts/stardist_models/dsb2018_heavy_augment.pb"
 
-def modelPath = def defaultModelPath = "/scripts/stardist_models/dsb2018_heavy_augment.pb"
+def modelPath = "/scripts/stardist_models/dsb2018_heavy_augment.pb"
 
 if (!Files.exists(Paths.get(modelPath))) {
 

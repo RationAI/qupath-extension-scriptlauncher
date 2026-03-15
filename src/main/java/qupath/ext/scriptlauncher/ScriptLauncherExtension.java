@@ -87,13 +87,13 @@ public class ScriptLauncherExtension implements QuPathExtension {
         String scriptPathEnv = System.getenv("QUPATH_SCRIPT");
         if (scriptPathEnv == null) {
             logger.error("QUPATH_SCRIPT environment variable not set");
-            api.fail("QUPATH_SCRIPT not set");
+            api.failJob("QUPATH_SCRIPT not set");
             return;
         }
         Path scriptPath = Path.of(scriptPathEnv);
         if (!Files.exists(scriptPath)) {
             logger.error("Script file not found: {}", scriptPath);
-            api.fail("Script not found: " + scriptPathEnv);
+            api.failJob("Script not found: " + scriptPathEnv);
             return;
         }
 
@@ -108,7 +108,7 @@ public class ScriptLauncherExtension implements QuPathExtension {
             logger.info("Script completed successfully");
         } catch (Exception e) {
             logger.error("Script execution failed", e);
-            api.fail("Script execution failed: " + e.getMessage());
+            api.failJob("Script execution failed: " + e.getMessage());
             return;
         }
 
