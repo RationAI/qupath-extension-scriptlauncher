@@ -74,13 +74,13 @@ public class EmpaiaScriptManager {
             scriptName = fetchScriptName(baseApi, jobId, token, httpClient);
         } catch (Exception e) {
             logger.error("Failed to fetch script name from EMPAIA inputs/script", e);
-            System.exit(1);
+            System.exit(2);
             return;
         }
         File scriptFile = new File(scriptsDir, scriptName + ".groovy");
         if (!scriptFile.exists()) {
             logger.error("Script file not found: {}", scriptFile.getAbsolutePath());
-            System.exit(1);
+            System.exit(3);
         }
         logger.info("Using script: {}", scriptFile.getAbsolutePath());
 
@@ -95,12 +95,12 @@ public class EmpaiaScriptManager {
             md = empaiaClient.fetchMetadata();
         } catch (Exception e) {
             logger.error("Failed to fetch WSI metadata from EMPAIA", e);
-            System.exit(1);
+            System.exit(4);
             return;
         }
         if (md == null || md.width <= 0 || md.height <= 0 || md.id == null) {
             logger.error("Invalid WSI metadata from EMPAIA");
-            System.exit(1);
+            System.exit(5);
             return;
         }
         logger.info("Fetched WSI metadata: id={} size={}x{}", md.id, md.width, md.height);
@@ -111,7 +111,7 @@ public class EmpaiaScriptManager {
             server = new EmpaiaRemoteWsiImageServer(empaiaClient, md.id);
         } catch (Exception e) {
             logger.error("Failed to create image server for WSI {}", md.id, e);
-            System.exit(1);
+            System.exit(6);
             return;
         }
 
@@ -143,7 +143,7 @@ public class EmpaiaScriptManager {
         if (error != null) {
             logger.error("Script execution failed", error);
             api.failJob("Script execution failed: " + error.getMessage());
-            System.exit(1);
+            System.exit(7);
         }
 
         putProgress(baseApi, jobId, token, 1.0, httpClient);
