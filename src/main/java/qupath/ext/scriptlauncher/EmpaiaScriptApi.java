@@ -87,6 +87,16 @@ public class EmpaiaScriptApi implements ScriptApi {
 
     // ── Script lifecycle (ScriptApi) ──────────────────────────────────────────
 
+    /**
+     * Starts asynchronous execution of a Groovy script against the provided image server.
+     *
+     * <p>The script is executed on a dedicated single-thread executor and can be monitored
+     * via {@link #isFinished()}, {@link #getProgress()}, and {@link #getError()}.
+     *
+     * @param script Groovy script file to execute
+     * @param server image server used to create {@link ImageData} for script bindings
+     * @throws IllegalStateException if execution has already been started for this instance
+     */
     @Override
     public void start(File script, ImageServer<?> server) {
         if (future != null) {
@@ -95,16 +105,31 @@ public class EmpaiaScriptApi implements ScriptApi {
         future = executor.submit(() -> runScript(script, server));
     }
 
+    /**
+     * Returns the latest progress fraction reported by the running script.
+     *
+     * @return progress value in the range [0.0, 1.0]
+     */
     @Override
     public double getProgress() {
         return progress.get();
     }
 
+    /**
+     * Indicates whether script execution has completed.
+     *
+     * @return {@code true} when the background task has finished, otherwise {@code false}
+     */
     @Override
     public boolean isFinished() {
         return future != null && future.isDone();
     }
 
+    /**
+     * Returns the execution error after completion, if any.
+     *
+     * @return root cause thrown by the script, {@code null} on success or if still running
+     */
     @Override
     public Throwable getError() {
         if (future == null || !future.isDone()) return null;
@@ -119,11 +144,25 @@ public class EmpaiaScriptApi implements ScriptApi {
         }
     }
 
+    /**
+     * Updates the script progress value.
+     *
+     * <p>The supplied value is clamped to [0.0, 1.0].
+     *
+     * @param fraction progress fraction
+     */
     @Override
     public void reportProgress(double fraction) {
         progress.set(Math.max(0.0, Math.min(1.0, fraction)));
     }
 
+    /**
+     * Returns the input ROI for the current job.
+     *
+     * <p>The ROI is fetched lazily from EMPAIA and cached for subsequent calls.
+     *
+     * @return input ROI annotation object, or {@code null} if unavailable
+     */
     @Override
     public PathObject getInputRoi() {
         if (!inputRoiFetched) {
@@ -133,6 +172,12 @@ public class EmpaiaScriptApi implements ScriptApi {
         return inputRoi;
     }
 
+    /**
+     * Posts a numeric output collection to EMPAIA for the specified output key.
+     *
+     * @param outputKey EMPAIA output key
+     * @param values numeric values to submit
+     */
     @Override
     public void postValues(String outputKey, Collection<? extends Number> values) {
         try {
@@ -169,6 +214,15 @@ public class EmpaiaScriptApi implements ScriptApi {
         }
     }
 
+    /**
+     * Posts polygon detections to EMPAIA for the specified output key.
+     *
+     * <p>Only objects with non-empty ROIs are included. Polygon coordinates are rounded to
+     * integer pixel coordinates to satisfy EMPAIA payload expectations.
+     *
+     * @param outputKey EMPAIA output key
+     * @param detections detections to serialize and submit
+     */
     @Override
     public void postAnnotations(String outputKey, Collection<PathObject> detections) {
         try {
@@ -220,6 +274,11 @@ public class EmpaiaScriptApi implements ScriptApi {
         }
     }
 
+    /**
+     * Reports a user-visible failure message for the current EMPAIA job.
+     *
+     * @param message failure reason shown to the user
+     */
     @Override
     public void fail(String message) {
         try {
@@ -258,6 +317,16 @@ public class EmpaiaScriptApi implements ScriptApi {
     // Private helpers
     // -------------------------------------------------------------------------
 
+    /**
+     * Builds script bindings and evaluates the Groovy file.
+     *
+     * <p>Exposes API/runtime variables to scripts via {@link Binding}, including
+     * {@code api}, {@code imageData}, {@code hierarchy}, {@code server}, and compatibility
+     * variables used by existing scripts.
+     *
+     * @param script script file to evaluate
+     * @param server image server backing the script execution context
+     */
     private void runScript(File script, ImageServer<?> server) {
         ImageData<?> imageData = new ImageData<>(server);
         var inputRoi = getInputRoi();
@@ -284,6 +353,11 @@ public class EmpaiaScriptApi implements ScriptApi {
         logger.info("Script finished: {}", script.getName());
     }
 
+    /**
+     * Fetches input ROI payload from EMPAIA and parses it into a QuPath annotation object.
+     *
+     * @return parsed input ROI object, or {@code null} if missing or invalid
+     */
     private PathObject fetchInputRoi() {
         try {
             String url = String.format("%s/%s/inputs/input_roi", baseApi, jobId);
@@ -309,6 +383,12 @@ public class EmpaiaScriptApi implements ScriptApi {
         return null;
     }
 
+    /**
+     * Parses EMPAIA ROI JSON into a rectangular QuPath annotation named {@code input_roi}.
+     *
+     * @param json EMPAIA ROI response body
+     * @return parsed annotation object, or {@code null} when parsing fails
+     */
     private PathObject parseRoiJson(String json) {
         try {
             JsonNode root = objectMapper.readTree(json);
@@ -329,10 +409,25 @@ public class EmpaiaScriptApi implements ScriptApi {
         }
     }
 
+    /**
+     * Serializes an object to JSON using the shared mapper.
+     *
+     * @param value object to serialize
+     * @return JSON representation of the object
+     * @throws IOException if serialization fails
+     */
     private String toJson(Object value) throws IOException {
         return objectMapper.writeValueAsString(value);
     }
 
+    /**
+     * Sends an authenticated JSON POST request.
+     *
+     * @param url target endpoint
+     * @param body JSON request body
+     * @return HTTP status code
+     * @throws Exception on network or protocol errors
+     */
     private int post(String url, String body) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -347,6 +442,14 @@ public class EmpaiaScriptApi implements ScriptApi {
         return resp.statusCode();
     }
 
+    /**
+     * Sends an authenticated JSON PUT request.
+     *
+     * @param url target endpoint
+     * @param body JSON request body
+     * @return HTTP status code
+     * @throws Exception on network or protocol errors
+     */
     private int put(String url, String body) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
