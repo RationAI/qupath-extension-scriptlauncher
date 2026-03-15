@@ -225,6 +225,19 @@ public class EmpaiaScriptApi implements ScriptApi {
      */
     @Override
     public void postAnnotations(String outputKey, Collection<PathObject> detections) {
+        postPolygonAnnotations(outputKey, detections);
+    }
+
+    /**
+     * Posts polygon detections to EMPAIA for the specified output key.
+     *
+     * <p>This is the explicit polygon variant used internally; {@link #postAnnotations(String, Collection)}
+     * delegates to this method for backward compatibility.
+     *
+     * @param outputKey EMPAIA output key
+     * @param detections detections to serialize and submit
+     */
+    public void postPolygonAnnotations(String outputKey, Collection<PathObject> detections) {
         try {
             String outputUrl = String.format("%s/%s/outputs/%s", baseApi, jobId, outputKey);
 
