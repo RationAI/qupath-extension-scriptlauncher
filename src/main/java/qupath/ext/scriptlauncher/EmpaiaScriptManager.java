@@ -147,8 +147,13 @@ public class EmpaiaScriptManager {
         }
 
         putProgress(baseApi, jobId, token, 1.0, httpClient);
-        api.finalizeJob();
-        logger.info("Job finalized");
+        boolean ok = api.finalizeJob();
+        if (ok) {
+            logger.info("Job finalized successfully");
+        } else {
+            logger.warn("Failed to finalize job");
+        }
+
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
