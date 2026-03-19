@@ -103,6 +103,11 @@ public class ScriptLauncherExtension implements QuPathExtension {
             binding.setVariable("api",       api);
             binding.setVariable("imageData", imageData);
             binding.setVariable("hierarchy", imageData.getHierarchy());
+            binding.setVariable("server", imageData.getServer());
+            binding.setVariable("selectionModel", imageData.getHierarchy().getSelectionModel());
+            binding.setVariable("project", null);
+            binding.setVariable("args", new String[0]);
+
             new GroovyShell(getClass().getClassLoader(), binding)
                     .evaluate(scriptPath.toFile());
             logger.info("Script completed successfully");
