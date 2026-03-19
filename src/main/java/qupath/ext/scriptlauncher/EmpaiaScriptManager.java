@@ -222,7 +222,8 @@ public class EmpaiaScriptManager {
         String val = System.getenv(name);
         if (val == null) return defaultValue;
         try {
-            return Long.parseLong(val);
+            long parsed = Long.parseLong(val);
+            return parsed > 0 ? parsed : defaultValue;
         } catch (NumberFormatException e) {
             return defaultValue;
         }
