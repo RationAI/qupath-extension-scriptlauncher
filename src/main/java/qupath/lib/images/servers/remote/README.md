@@ -21,7 +21,7 @@ Key classes
 Configuration
 -------------
 The client expects the EMPAIA API base and job to be provided by the extension (ScriptLauncherExtension). Typical environment/configuration keys used by the extension are:
-- EMPAIA_APP_API
+- EMPAIA_BASE_API
 - EMPAIA_JOB_ID
 - EMPAIA_TOKEN 
 

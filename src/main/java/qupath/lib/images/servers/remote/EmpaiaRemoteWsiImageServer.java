@@ -54,19 +54,19 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 	/**
 	 * Construct an image server from a {@link URI}. The constructor will
 	 * create an {@link EmpaiaRemoteWsiClient} using environment variables
-	 * EMPAIA_APP_API and EMPAIA_JOB_ID. The WSI id is taken from the URI
+	 * EMPAIA_BASE_API and EMPAIA_JOB_ID. The WSI id is taken from the URI
 	 * path if present, otherwise the URI string is used as a fallback.
 	 */
 	public EmpaiaRemoteWsiImageServer(URI uri, String... args) throws IOException {
 		super();
 		this.uri = uri;
 
-		String baseApi = System.getenv("EMPAIA_APP_API");
+		String baseApi = System.getenv("EMPAIA_BASE_API");
 		String jobId = System.getenv("EMPAIA_JOB_ID");
 		String token = System.getenv("EMPAIA_TOKEN");
 
 		if (baseApi == null || jobId == null) {
-			throw new IOException("EMPAIA_APP_API and EMPAIA_JOB_ID environment variables must be set");
+			throw new IOException("EMPAIA_BASE_API and EMPAIA_JOB_ID environment variables must be set");
 		}
 
 		Map<String, String> headers = token != null ? Map.of("Authorization", "Bearer " + token) : Collections.emptyMap();
