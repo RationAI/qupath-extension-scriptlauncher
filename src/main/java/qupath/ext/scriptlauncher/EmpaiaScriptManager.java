@@ -14,37 +14,50 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 /**
  * EmpaiaScriptManager — EMPAIA platform manager and Docker entry point.
  *
- * <p>Responsibilities:
+ * <p>
+ * Responsibilities:
  * <ul>
- *   <li>Read EMPAIA configuration from environment variables</li>
- *   <li>Fetch WSI metadata from EMPAIA and open the image server</li>
- *   <li>Create {@link EmpaiaScriptApi} (EMPAIA implementation of ScriptApi)</li>
- *   <li>Hand control to {@link GroovyScriptRunner} and wait in a polling loop</li>
- *   <li>Forward progress reported by the script to EMPAIA's progress endpoint</li>
- *   <li>Finalize or fail the job when the runner signals completion</li>
+ * <li>Read EMPAIA configuration from environment variables</li>
+ * <li>Fetch WSI metadata from EMPAIA and open the image server</li>
+ * <li>Create {@link EmpaiaScriptApi} (EMPAIA implementation of ScriptApi)</li>
+ * <li>Hand control to {@link GroovyScriptRunner} and wait in a polling
+ * loop</li>
+ * <li>Forward progress reported by the script to EMPAIA's progress
+ * endpoint</li>
+ * <li>Finalize or fail the job when the runner signals completion</li>
  * </ul>
  *
- * <p>This class knows about EMPAIA. It does NOT know about QuPath internals
+ * <p>
+ * This class knows about EMPAIA. It does NOT know about QuPath internals
  * (ImageData, hierarchy, ROIs) — those are the runner's responsibility.
  *
- * <p>Invoked as:
+ * <p>
+ * Invoked as:
+ * 
  * <pre>
  *   java -cp "/opt/QuPath/lib/app/*" qupath.ext.scriptlauncher.EmpaiaScriptManager
  * </pre>
  *
- * <p>Required environment variables:
+ * <p>
+ * Required environment variables:
  * <ul>
- *   <li>{@code EMPAIA_BASE_API} — EMPAIA App API base URL (e.g. https://host/api/app/v3)</li>
- *   <li>{@code EMPAIA_JOB_ID}   — EMPAIA job UUID</li>
+ * <li>{@code EMPAIA_BASE_API} — EMPAIA App API base URL (e.g.
+ * https://host/api/app/v3)</li>
+ * <li>{@code EMPAIA_JOB_ID} — EMPAIA job UUID</li>
  * </ul>
  * Optional:
  * <ul>
- *   <li>{@code EMPAIA_TOKEN}         — bearer token for authenticated access</li>
- *   <li>{@code EMPAIA_POLL_INTERVAL} — progress poll interval in ms (default: 2000)</li>
- *   <li>{@code QUPATH_SCRIPTS_DIR}   — directory containing Groovy scripts (default: /scripts)</li>
+ * <li>{@code EMPAIA_TOKEN} — bearer token for authenticated access</li>
+ * <li>{@code EMPAIA_POLL_INTERVAL} — progress poll interval in ms (default:
+ * 2000)</li>
+ * <li>{@code QUPATH_SCRIPTS_DIR} — directory containing Groovy scripts
+ * (default: /scripts)</li>
  * </ul>
  */
 public class EmpaiaScriptManager {
@@ -55,11 +68,11 @@ public class EmpaiaScriptManager {
 
     public static void main(String[] args) {
         // ── 1. Read configuration from environment ────────────────────────────
-        String baseApi    = System.getenv("EMPAIA_BASE_API");
-        String jobId      = System.getenv("EMPAIA_JOB_ID");
-        String token      = System.getenv("EMPAIA_TOKEN");
+        String baseApi = System.getenv("EMPAIA_BASE_API");
+        String jobId = System.getenv("EMPAIA_JOB_ID");
+        String token = System.getenv("EMPAIA_TOKEN");
         String scriptsDir = "/scripts";
-        long   pollMs     = parseLongEnv("EMPAIA_POLL_INTERVAL", DEFAULT_POLL_INTERVAL_MS);
+        long pollMs = parseLongEnv("EMPAIA_POLL_INTERVAL", DEFAULT_POLL_INTERVAL_MS);
 
         if (baseApi == null || jobId == null) {
             logger.error("EMPAIA_BASE_API and EMPAIA_JOB_ID must be set");
@@ -77,12 +90,20 @@ public class EmpaiaScriptManager {
             System.exit(2);
             return;
         }
-        File scriptFile = new File(scriptsDir, scriptName + ".groovy");
-        if (!scriptFile.exists()) {
-            logger.error("Script file not found: {}", scriptFile.getAbsolutePath());
+
+        if (!scriptName.matches("[A-Za-z0-9_-]+")) {
+            logger.error("Invalid script name from EMPAIA: {}", scriptName);
             System.exit(3);
+            return;
         }
-        logger.info("Using script: {}", scriptFile.getAbsolutePath());
+        Path scriptsRoot = Path.of(scriptsDir).toAbsolutePath().normalize();
+        Path scriptPath = scriptsRoot.resolve(scriptName + ".groovy").normalize();
+        if (!scriptPath.startsWith(scriptsRoot) || !Files.isRegularFile(scriptPath)) {
+            logger.error("Script file not found: {}", scriptPath);
+            System.exit(3);
+            return;
+        }
+        File scriptFile = scriptPath.toFile();
 
         // ── 3. Fetch WSI metadata from EMPAIA ────────────────────────────────
         Map<String, String> headers = token != null
@@ -162,18 +183,20 @@ public class EmpaiaScriptManager {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
-     * GET /{jobId}/inputs/script and return the script name (without .groovy extension).
+     * GET /{jobId}/inputs/script and return the script name (without .groovy
+     * extension).
      * Extracts the "value" field from the response JSON.
      */
     private static String fetchScriptName(String baseApi, String jobId, String token,
-                                          HttpClient httpClient) throws Exception {
+            HttpClient httpClient) throws Exception {
         String url = String.format("%s/%s/inputs/script", baseApi, jobId);
         logger.info("Fetching script name from {}", url);
 
         HttpRequest.Builder req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .GET();
-        if (token != null) req.header("Authorization", "Bearer " + token);
+        if (token != null)
+            req.header("Authorization", "Bearer " + token);
 
         HttpResponse<String> resp = httpClient.send(req.build(), HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
@@ -192,19 +215,21 @@ public class EmpaiaScriptManager {
     }
 
     /**
-     * PUT /{jobId}/progress with body {"progress": <fraction>} where fraction is in [0.0, 1.0]
+     * PUT /{jobId}/progress with body {"progress": <fraction>} where fraction is in
+     * [0.0, 1.0]
      */
     private static void putProgress(String baseApi, String jobId, String token,
-                                     double progress, HttpClient httpClient) {
+            double progress, HttpClient httpClient) {
         try {
-            String url  = String.format("%s/%s/progress", baseApi, jobId);
+            String url = String.format("%s/%s/progress", baseApi, jobId);
             String body = objectMapper.writeValueAsString(Map.of("progress", progress));
 
             HttpRequest.Builder req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .header("Content-Type", "application/json")
                     .PUT(HttpRequest.BodyPublishers.ofString(body));
-            if (token != null) req.header("Authorization", "Bearer " + token);
+            if (token != null)
+                req.header("Authorization", "Bearer " + token);
 
             HttpResponse<String> resp = httpClient.send(req.build(),
                     HttpResponse.BodyHandlers.ofString());
@@ -220,7 +245,8 @@ public class EmpaiaScriptManager {
 
     private static long parseLongEnv(String name, long defaultValue) {
         String val = System.getenv(name);
-        if (val == null) return defaultValue;
+        if (val == null)
+            return defaultValue;
         try {
             long parsed = Long.parseLong(val);
             return parsed > 0 ? parsed : defaultValue;
