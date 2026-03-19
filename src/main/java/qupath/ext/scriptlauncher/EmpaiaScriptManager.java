@@ -134,7 +134,10 @@ public class EmpaiaScriptManager {
                 Thread.sleep(pollMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
+                logger.error("Interrupted while waiting for script completion", e);
+                api.failJob("Interrupted while waiting for script completion");
+                System.exit(8);
+                return;
             }
         }
 
