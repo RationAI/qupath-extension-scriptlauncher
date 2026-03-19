@@ -44,6 +44,10 @@ COPY ["QuPath/v0.6/extensions/catalogs/QuPath catalog/QuPath StarDist extension/
 # ── Install scripts ───────────────────────────────────────────────────────────
 COPY qupath-extension-scriptlauncher/scripts/ /scripts/
 
+RUN useradd --system --uid 10001 --create-home appuser \
+    && chown -R appuser:appuser /opt/QuPath /scripts
+USER appuser
+
 # ── Runtime environment ───────────────────────────────────────────────────────
 # Supply at container start via -e or --env-file:
 #   EMPAIA_BASE_API  — e.g. https://host/api/app/v3
