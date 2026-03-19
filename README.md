@@ -60,7 +60,6 @@ The script to execute is resolved automatically: `EmpaiaScriptManager` fetches `
 | `EMPAIA_JOB_ID` | ✅ | — | EMPAIA job UUID |
 | `EMPAIA_TOKEN` | — | — | Bearer token for authenticated access |
 | `EMPAIA_POLL_INTERVAL` | — | `2000` | Progress poll interval in milliseconds |
-| `QUPATH_SCRIPTS_DIR` | — | `/scripts` | Directory containing Groovy analysis scripts |
 
 ---
 
