@@ -22,9 +22,5 @@ Thumbs.db
 # Gradle cache
 .gradle/
 
-# Gradle wrapper
-gradle/
-gradlew
-gradlew.bat
 src/main/java/qupath/lib/scripts/
 src/main/java/qupath/lib/staridist_models/
