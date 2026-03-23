@@ -1,26 +1,32 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 — Build ScriptAPI and launcher JARs
-# Build context: /home/filip   (run: docker build -f qupath-extension-scriptlauncher/Dockerfile .)
+# Build context: launcher repo root (ScriptAPI is cloned during build)
 # ─────────────────────────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jdk AS builder
 
 WORKDIR /build
 
-# Copy source trees
-COPY ScriptAPI/                        ScriptAPI/
-COPY qupath-extension-scriptlauncher/  qupath-extension-scriptlauncher/
+ARG LAUNCHER_SRC=qupath-extension-scriptlauncher
+ARG SCRIPT_API_REPO=https://github.com/Filip-Vrubel-Bachelor-Thesis/ScriptAPI
+ARG SCRIPT_API_REF=main
+ARG QUPATH_LIB_DIR=/build/QuPath-v0.6.0-Linux/QuPath/lib/app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy launcher source tree
+COPY ${LAUNCHER_SRC}/    qupath-extension-scriptlauncher/
+
+# Clone ScriptAPI from GitHub
+RUN git clone --depth 1 --branch ${SCRIPT_API_REF} ${SCRIPT_API_REPO} ScriptAPI
 
 # Copy local QuPath lib JARs needed for compilation (compile-only)
 COPY QuPath-v0.6.0-Linux/QuPath/lib/app/  QuPath-v0.6.0-Linux/QuPath/lib/app/
 
-# The flatDir paths in build.gradle.kts reference /home/filip/QuPath-v0.6.0-Linux/...
-# so we symlink to match
-RUN mkdir -p /home/filip \
-    && ln -s /build/QuPath-v0.6.0-Linux /home/filip/QuPath-v0.6.0-Linux
-
 # Build ScriptAPI then the launcher (composite build resolves ScriptAPI from source)
-RUN cd ScriptAPI && ./gradlew build -q
-RUN cd qupath-extension-scriptlauncher && ./gradlew build -q
+RUN cd ScriptAPI && ./gradlew build -q -PqupathLibDir=${QUPATH_LIB_DIR}
+RUN cd qupath-extension-scriptlauncher && ./gradlew build -q -PqupathLibDir=${QUPATH_LIB_DIR}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
