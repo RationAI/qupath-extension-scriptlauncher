@@ -11,7 +11,7 @@ if (inputRoi == null)
 else
     println "Using input_roi: ${inputRoi.getROI()}"
 
-def modelPath = "/scripts/stardist_models/he_heavy_augment.pb"
+def modelPath = "/scripts/models/stardist/he_heavy_augment.pb"
 
 if (!Files.exists(Paths.get(modelPath))) {
     api.failJob("Model path does not exist: ${modelPath}")
