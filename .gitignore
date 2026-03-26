@@ -1,0 +1,26 @@
+# Build output
+/build/
+/bin/
+/out/
+/libs/
+
+# IDE stuff
+/.idea/
+/*.iml
+/.classpath
+/.project
+/.settings/
+/.vscode/
+
+# OS stuff
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Gradle cache
+.gradle/
+
+src/main/java/qupath/lib/scripts/
+src/main/java/qupath/lib/staridist_models/

@@ -1,0 +1,15 @@
+# Build artifacts
+ScriptAPI/.gradle/
+ScriptAPI/build/
+ScriptAPI/bin/
+qupath-extension-scriptlauncher/.gradle/
+qupath-extension-scriptlauncher/build/
+qupath-extension-scriptlauncher/bin/
+
+# Git
+**/.git/
+**/.gitignore
+
+# Exclude unrelated local repos
+xopat/
+EMPAIA-Workbench-Service/
