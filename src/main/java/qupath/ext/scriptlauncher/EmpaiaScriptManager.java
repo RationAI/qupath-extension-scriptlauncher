@@ -68,14 +68,14 @@ public class EmpaiaScriptManager {
 
     public static void main(String[] args) {
         // ── 1. Read configuration from environment ────────────────────────────
-        String baseApi = System.getenv("EMPAIA_BASE_API");
+        String baseApi = System.getenv("EMPAIA_APP_API");
         String jobId = System.getenv("EMPAIA_JOB_ID");
         String token = System.getenv("EMPAIA_TOKEN");
         String scriptsDir = "/scripts";
         long pollMs = parseLongEnv("EMPAIA_POLL_INTERVAL", DEFAULT_POLL_INTERVAL_MS);
 
         if (baseApi == null || jobId == null) {
-            logger.error("EMPAIA_BASE_API and EMPAIA_JOB_ID must be set");
+            logger.error("EMPAIA_APP_API and EMPAIA_JOB_ID must be set");
             System.exit(1);
         }
 
