@@ -30,10 +30,8 @@ def stardist = StarDist2D.builder(modelPath)
     .build()
 
 println "Running StarDist detection..."
-if (inputRoi == null)
-    stardist.detectObjects(imageData)
-else
-    stardist.detectObjects(imageData, [inputRoi])
+def parents = inputRoi != null ? [inputRoi] : [hierarchy.getRootObject()]
+stardist.detectObjects(imageData, parents)
 
 api.reportProgress(0.8)
 
