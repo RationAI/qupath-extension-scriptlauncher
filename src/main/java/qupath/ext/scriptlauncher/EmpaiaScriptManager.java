@@ -68,23 +68,31 @@ public class EmpaiaScriptManager {
 
     public static void main(String[] args) {
         // ── 1. Read configuration from environment ────────────────────────────
-        String baseApi = System.getenv("EMPAIA_APP_API");
+        String appApi = System.getenv("EMPAIA_APP_API");
         String jobId = System.getenv("EMPAIA_JOB_ID");
         String token = System.getenv("EMPAIA_TOKEN");
         String scriptsDir = "/scripts";
         long pollMs = parseLongEnv("EMPAIA_POLL_INTERVAL", DEFAULT_POLL_INTERVAL_MS);
 
-        if (baseApi == null || jobId == null) {
+        if (appApi == null || jobId == null) {
             logger.error("EMPAIA_APP_API and EMPAIA_JOB_ID must be set");
             System.exit(1);
         }
+
+        // Normalize: strip trailing slash, then ensure /v3 suffix so all URL
+        // constructions work regardless of whether the env var includes it.
+        appApi = appApi.replaceAll("/+$", "");
+        if (!appApi.endsWith("/v3")) {
+            appApi = appApi + "/v3";
+        }
+        logger.info("Using App API base: {}", appApi);
 
         HttpClient httpClient = HttpClient.newHttpClient();
 
         // ── 2. Fetch script name from EMPAIA inputs/script ────────────────────
         String scriptName;
         try {
-            scriptName = fetchScriptName(baseApi, jobId, token, httpClient);
+            scriptName = fetchScriptName(appApi, jobId, token, httpClient);
         } catch (Exception e) {
             logger.error("Failed to fetch script name from EMPAIA inputs/script", e);
             System.exit(2);
@@ -110,7 +118,7 @@ public class EmpaiaScriptManager {
                 ? Map.of("Authorization", "Bearer " + token)
                 : Map.of();
 
-        EmpaiaRemoteWsiClient empaiaClient = new EmpaiaRemoteWsiClient(baseApi, jobId, headers);
+        EmpaiaRemoteWsiClient empaiaClient = new EmpaiaRemoteWsiClient(appApi, jobId, headers);
         EmpaiaRemoteWsiClient.Metadata md;
         try {
             md = empaiaClient.fetchMetadata();
@@ -136,7 +144,7 @@ public class EmpaiaScriptManager {
             return;
         }
 
-        EmpaiaScriptApi api = new EmpaiaScriptApi(baseApi, jobId, token, md.id, httpClient);
+        EmpaiaScriptApi api = new EmpaiaScriptApi(appApi, jobId, token, md.id, httpClient);
 
         // ── 5. Start the script ───────────────────────────────────────────────
         api.start(scriptFile, server);
@@ -148,7 +156,7 @@ public class EmpaiaScriptManager {
             double progress = api.getProgress();
             if (progress != lastPostedProgress) {
                 logger.info("Script progress: {}%", String.format("%.2f", progress * 100));
-                putProgress(baseApi, jobId, token, progress, httpClient);
+                putProgress(appApi, jobId, token, progress, httpClient);
                 lastPostedProgress = progress;
             }
             try {
@@ -170,7 +178,7 @@ public class EmpaiaScriptManager {
             System.exit(7);
         }
 
-        putProgress(baseApi, jobId, token, 1.0, httpClient);
+        putProgress(appApi, jobId, token, 1.0, httpClient);
         boolean ok = api.finalizeJob();
         if (ok) {
             logger.info("Job finalized successfully");
@@ -187,9 +195,9 @@ public class EmpaiaScriptManager {
      * extension).
      * Extracts the "value" field from the response JSON.
      */
-    private static String fetchScriptName(String baseApi, String jobId, String token,
+    private static String fetchScriptName(String appApi, String jobId, String token,
             HttpClient httpClient) throws Exception {
-        String url = String.format("%s/%s/inputs/script", baseApi, jobId);
+        String url = String.format("%s/%s/inputs/script", appApi, jobId);
         logger.info("Fetching script name from {}", url);
 
         HttpRequest.Builder req = HttpRequest.newBuilder()
@@ -218,10 +226,10 @@ public class EmpaiaScriptManager {
      * PUT /{jobId}/progress with body {"progress": <fraction>} where fraction is in
      * [0.0, 1.0]
      */
-    private static void putProgress(String baseApi, String jobId, String token,
+    private static void putProgress(String appApi, String jobId, String token,
             double progress, HttpClient httpClient) {
         try {
-            String url = String.format("%s/%s/progress", baseApi, jobId);
+            String url = String.format("%s/%s/progress", appApi, jobId);
             String body = objectMapper.writeValueAsString(Map.of("progress", progress));
 
             HttpRequest.Builder req = HttpRequest.newBuilder()
