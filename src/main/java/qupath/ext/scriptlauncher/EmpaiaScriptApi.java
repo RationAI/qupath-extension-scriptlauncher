@@ -455,6 +455,7 @@ public class EmpaiaScriptApi implements ScriptApi {
      * @throws Exception on network or protocol errors
      */
     private int post(String url, String body) throws Exception {
+        logger.info("POST {} body={}", url, body);
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")

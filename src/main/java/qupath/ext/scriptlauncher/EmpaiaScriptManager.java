@@ -87,7 +87,9 @@ public class EmpaiaScriptManager {
         }
         logger.info("Using App API base: {}", appApi);
 
-        HttpClient httpClient = HttpClient.newHttpClient();
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
 
         // ── 2. Fetch script name from EMPAIA inputs/script ────────────────────
         String scriptName;
