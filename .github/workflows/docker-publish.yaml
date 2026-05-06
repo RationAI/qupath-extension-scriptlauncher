@@ -18,7 +18,7 @@ on:
 env:
   TAG_NAME: ${{ github.event.inputs.TAG_NAME || github.event.release.tag_name }}
   REGISTRY: cerit.io
-  IMAGE_NAME: rationai/production/qupath-scriptlauncher
+  IMAGE_NAME: rationai/production/qupath-extension-scriptlauncher
 
 jobs:
   build-and-publish:
