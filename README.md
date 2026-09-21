@@ -94,10 +94,11 @@ api.reportProgress(1.0)
 
 ```java
 PathObject getInputRoi()                                          // input ROI or null
+String getInput(String key)                                       // raw string job input, or null if missing/unavailable
 void postValues(String key, Collection<? extends Number> values)  // numeric outputs
 void postAnnotations(String key, Collection<PathObject> objects)  // polygon outputs
 void reportProgress(double fraction)                              // 0.0 → 1.0
-void fail(String message)                                         // fail the job
+void failJob(String message)                                      // fail the job
 ```
 
 ### Bundled scripts

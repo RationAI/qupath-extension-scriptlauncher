@@ -23,6 +23,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +57,7 @@ public class EmpaiaScriptApi implements ScriptApi {
     private boolean inputRoiFetched = false;
 
     /** Cache of raw input values fetched via {@link #getInput(String)}, keyed by input key. */
-    private final Map<String, String> inputCache = new java.util.HashMap<>();
+    private final Map<String, String> inputCache = new HashMap<>();
 
     /** Progress fraction [0.0, 1.0] reported by the running script. */
     private final AtomicReference<Double> progress = new AtomicReference<>(0.0);
@@ -425,6 +426,9 @@ public class EmpaiaScriptApi implements ScriptApi {
                 logger.warn("input_roi fetch returned status {}", resp.statusCode());
             }
         } catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             logger.warn("Could not fetch input_roi: {}", e.getMessage());
         }
         return null;
@@ -457,10 +461,15 @@ public class EmpaiaScriptApi implements ScriptApi {
                     return null;
                 }
                 return valueNode.asText();
+            } else if (resp.statusCode() == 404) {
+                logger.debug("Input '{}' not declared for this app (404) — caller will use its own default", key);
             } else {
                 logger.warn("Input '{}' fetch returned status {}", key, resp.statusCode());
             }
         } catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             logger.warn("Could not fetch input '{}': {}", key, e.getMessage());
         }
         return null;
