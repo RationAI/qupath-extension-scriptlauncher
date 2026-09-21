@@ -55,6 +55,9 @@ public class EmpaiaScriptApi implements ScriptApi {
     private PathObject inputRoi;
     private boolean inputRoiFetched = false;
 
+    /** Cache of raw input values fetched via {@link #getInput(String)}, keyed by input key. */
+    private final Map<String, String> inputCache = new java.util.HashMap<>();
+
     /** Progress fraction [0.0, 1.0] reported by the running script. */
     private final AtomicReference<Double> progress = new AtomicReference<>(0.0);
 
@@ -170,6 +173,24 @@ public class EmpaiaScriptApi implements ScriptApi {
             inputRoiFetched = true;
         }
         return inputRoi;
+    }
+
+    /**
+     * Returns the raw string value of a named EMPAIA job input.
+     *
+     * <p>Fetched lazily and cached per key. Never throws — any fetch failure
+     * (network error, non-2xx, missing {@code value} field) is logged and
+     * resolves to {@code null}; the caller owns fallback behavior.
+     *
+     * @param key the EMPAIA input key as defined in the EAD's {@code io} section
+     * @return the input's raw string value, or {@code null} if unavailable
+     */
+    @Override
+    public String getInput(String key) {
+        if (inputCache.containsKey(key)) return inputCache.get(key);
+        String value = fetchInput(key);
+        inputCache.put(key, value);
+        return value;
     }
 
     /**
@@ -405,6 +426,42 @@ public class EmpaiaScriptApi implements ScriptApi {
             }
         } catch (Exception e) {
             logger.warn("Could not fetch input_roi: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Fetches a single named input's raw value from EMPAIA.
+     *
+     * @param key the EMPAIA input key
+     * @return the input's raw string value, or {@code null} on any failure
+     */
+    private String fetchInput(String key) {
+        try {
+            String url = String.format("%s/%s/inputs/%s", baseApi, jobId, key);
+            logger.info("Fetching input '{}' from: {}", key, url);
+
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .GET();
+            if (token != null) builder.header("Authorization", "Bearer " + token);
+
+            HttpResponse<String> resp = httpClient.send(builder.build(),
+                    HttpResponse.BodyHandlers.ofString());
+
+            if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
+                JsonNode root = objectMapper.readTree(resp.body());
+                JsonNode valueNode = root.path("value");
+                if (valueNode.isMissingNode() || valueNode.isNull()) {
+                    logger.warn("Input '{}' response has no 'value' field: {}", key, resp.body());
+                    return null;
+                }
+                return valueNode.asText();
+            } else {
+                logger.warn("Input '{}' fetch returned status {}", key, resp.statusCode());
+            }
+        } catch (Exception e) {
+            logger.warn("Could not fetch input '{}': {}", key, e.getMessage());
         }
         return null;
     }

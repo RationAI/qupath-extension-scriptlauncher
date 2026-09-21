@@ -22,12 +22,22 @@ println "Using StarDist model: ${modelPath}"
 
 api.reportProgress(0.1)
 
-def stardist = StarDist2D.builder(modelPath)
+def threshold     = (api.getInput("threshold")      ?: "0.5").toDouble()
+def pixelSize     = (api.getInput("pixel_size")     ?: "0.5").toDouble()
+def tileSize      = (api.getInput("tile_size")      ?: "1024").toInteger()
+def cellExpansion = (api.getInput("cell_expansion") ?: "0.0").toDouble()
+
+println "StarDist params: threshold=${threshold} pixelSize=${pixelSize} tileSize=${tileSize} cellExpansion=${cellExpansion}"
+
+def stardistBuilder = StarDist2D.builder(modelPath)
     .normalizePercentiles(1, 99)
-    .threshold(0.5)
-    .pixelSize(0.5)
-    .tileSize(1024)
-    .build()
+    .threshold(threshold)
+    .pixelSize(pixelSize)
+    .tileSize(tileSize)
+if (cellExpansion > 0) {
+    stardistBuilder = stardistBuilder.cellExpansion(cellExpansion)
+}
+def stardist = stardistBuilder.build()
 
 println "Running StarDist detection..."
 def parents = inputRoi != null ? [inputRoi] : [hierarchy.getRootObject()]
