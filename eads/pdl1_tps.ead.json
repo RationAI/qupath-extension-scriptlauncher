@@ -1,0 +1,81 @@
+{
+    "$schema": "https://gitlab.com/empaia/integration/definitions/-/raw/main/ead/ead-schema.v3.json",
+    "name": "PD-L1 Score Estimate",
+    "name_short": "PDL1Est",
+    "namespace": "org.empaia.rationai.qupath_pdl1_tps_01.v3.0",
+    "description": "Estimates a TPS-style PD-L1 score inside a drawn tumor region on a PD-L1 IHC slide. Uncalibrated: every cell in the region counts as tumor. Not a clinical TPS.",
+    "classes": {},
+    "configuration": {
+        "global": {
+            "script": { "type": "string" },
+            "model": { "type": "string" },
+            "threshold": { "type": "float" },
+            "pixel_size": { "type": "float" },
+            "tile_size": { "type": "integer" },
+            "cell_expansion": { "type": "float" },
+            "dab_threshold": { "type": "float" }
+        }
+    },
+    "io": {
+        "my_wsi": { "type": "wsi" },
+        "script": { "type": "string" },
+        "input_roi": {
+            "type": "rectangle",
+            "reference": "io.my_wsi"
+        },
+        "model": { "type": "string" },
+        "threshold": { "type": "float" },
+        "pixel_size": { "type": "float" },
+        "tile_size": { "type": "integer" },
+        "cell_expansion": { "type": "float" },
+        "dab_threshold": { "type": "float" },
+        "positive_cells": {
+            "type": "collection",
+            "items": {
+                "type": "polygon",
+                "reference": "io.my_wsi"
+            }
+        },
+        "negative_cells": {
+            "type": "collection",
+            "items": {
+                "type": "polygon",
+                "reference": "io.my_wsi"
+            }
+        },
+        "score_percent": {
+            "type": "collection",
+            "items": { "type": "float" }
+        },
+        "positive_count": {
+            "type": "collection",
+            "items": { "type": "float" }
+        },
+        "total_count": {
+            "type": "collection",
+            "items": { "type": "float" }
+        }
+    },
+    "modes": {
+        "standalone": {
+            "inputs": [
+                "my_wsi",
+                "script",
+                "input_roi",
+                "model",
+                "threshold",
+                "pixel_size",
+                "tile_size",
+                "cell_expansion",
+                "dab_threshold"
+            ],
+            "outputs": [
+                "positive_cells",
+                "negative_cells",
+                "score_percent",
+                "positive_count",
+                "total_count"
+            ]
+        }
+    }
+}
