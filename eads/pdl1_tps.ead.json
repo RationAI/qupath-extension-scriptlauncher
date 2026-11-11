@@ -3,17 +3,13 @@
     "name": "PD-L1 Score Estimate",
     "name_short": "PDL1Est",
     "namespace": "org.empaia.rationai.qupath_pdl1_tps_01.v3.0",
-    "description": "Estimates a TPS-style PD-L1 score inside a drawn tumor region on a PD-L1 IHC slide. Uncalibrated: every cell in the region counts as tumor. Not a clinical TPS.",
+    "description": "Estimates the PD-L1 Tumor Proportion Score inside a drawn region of a PD-L1 IHC slide, using the IGNITE PD-L1 cell detection model (trained on NSCLC, weights CC BY-NC-SA 4.0). Use on PD-L1 IHC only. Not a clinical TPS.",
     "classes": {},
     "configuration": {
         "global": {
             "script": { "type": "string" },
-            "model": { "type": "string" },
-            "threshold": { "type": "float" },
-            "pixel_size": { "type": "float" },
-            "tile_size": { "type": "integer" },
-            "cell_expansion": { "type": "float" },
-            "dab_threshold": { "type": "float" }
+            "conf_threshold": { "type": "float" },
+            "iou_threshold": { "type": "float" }
         }
     },
     "io": {
@@ -23,20 +19,23 @@
             "type": "rectangle",
             "reference": "io.my_wsi"
         },
-        "model": { "type": "string" },
-        "threshold": { "type": "float" },
-        "pixel_size": { "type": "float" },
-        "tile_size": { "type": "integer" },
-        "cell_expansion": { "type": "float" },
-        "dab_threshold": { "type": "float" },
-        "positive_cells": {
+        "conf_threshold": { "type": "float" },
+        "iou_threshold": { "type": "float" },
+        "positive_tumor_cells": {
             "type": "collection",
             "items": {
                 "type": "polygon",
                 "reference": "io.my_wsi"
             }
         },
-        "negative_cells": {
+        "negative_tumor_cells": {
+            "type": "collection",
+            "items": {
+                "type": "polygon",
+                "reference": "io.my_wsi"
+            }
+        },
+        "non_tumor_cells": {
             "type": "collection",
             "items": {
                 "type": "polygon",
@@ -51,7 +50,11 @@
             "type": "collection",
             "items": { "type": "float" }
         },
-        "total_count": {
+        "tumor_count": {
+            "type": "collection",
+            "items": { "type": "float" }
+        },
+        "non_tumor_count": {
             "type": "collection",
             "items": { "type": "float" }
         }
@@ -62,19 +65,17 @@
                 "my_wsi",
                 "script",
                 "input_roi",
-                "model",
-                "threshold",
-                "pixel_size",
-                "tile_size",
-                "cell_expansion",
-                "dab_threshold"
+                "conf_threshold",
+                "iou_threshold"
             ],
             "outputs": [
-                "positive_cells",
-                "negative_cells",
+                "positive_tumor_cells",
+                "negative_tumor_cells",
+                "non_tumor_cells",
                 "score_percent",
                 "positive_count",
-                "total_count"
+                "tumor_count",
+                "non_tumor_count"
             ]
         }
     }
