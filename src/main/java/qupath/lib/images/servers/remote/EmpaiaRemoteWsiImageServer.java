@@ -31,6 +31,14 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 
 	private static final Logger logger = LoggerFactory.getLogger(EmpaiaRemoteWsiImageServer.class);
 
+	/**
+	 * Minimum tile size reported to QuPath. QuPath indexes every tile of every level on the first read;
+	 * with the server's 256 px tiles a 100k x 200k px slide needs about 200 MB of heap for that index alone,
+	 * more than a 512 MiB job container gives the JVM. Tiles are read with the region endpoint, which accepts
+	 * any size, so larger tiles only change the request size.
+	 */
+	private static final int MIN_TILE_SIZE = 1024;
+
 	private final URI uri;
 	private final EmpaiaRemoteWsiClient client;
 	private final String wsiId;
@@ -118,7 +126,7 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 				.channels(ImageChannel.getDefaultRGBChannels())
 				.rgb(true)
 				.pixelType(PixelType.UINT8)
-				.preferredTileSize(md.tileWidth, md.tileHeight)
+				.preferredTileSize(Math.max(md.tileWidth, MIN_TILE_SIZE), Math.max(md.tileHeight, MIN_TILE_SIZE))
 				.levels(levels);
 		if (md.pixelWidthMicrons > 0 && md.pixelHeightMicrons > 0) {
 			metadataBuilder.pixelSizeMicrons(md.pixelWidthMicrons, md.pixelHeightMicrons);
@@ -226,8 +234,9 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 				logger.debug("Region endpoint failed for wsiId={}, level={}, x={}, y={} — falling back to tiles: {}",
 						wsiId, level, imageXLevel, imageYLevel, e.getMessage());
 
-				final int serverTileW = originalMetadata.getPreferredTileWidth();
-				final int serverTileH = originalMetadata.getPreferredTileHeight();
+				// The server's own tile grid, not the larger tile size reported to QuPath
+				final int serverTileW = metadata.tileWidth;
+				final int serverTileH = metadata.tileHeight;
 				final int tileXIndex = Math.floorDiv(imageXLevel, serverTileW);
 				final int tileYIndex = Math.floorDiv(imageYLevel, serverTileH);
 				final int offsetX = imageXLevel - tileXIndex * serverTileW;
