@@ -57,6 +57,8 @@ public class EmpaiaRemoteWsiClient {
         public List<int[]> levels = new ArrayList<>(); // each entry [w,h]
         public int tileWidth = 256;
         public int tileHeight = 256;
+        public double pixelWidthMicrons = Double.NaN;  // NaN when the slide has no pixel size
+        public double pixelHeightMicrons = Double.NaN;
     }
 
     /**
@@ -102,6 +104,17 @@ public class EmpaiaRemoteWsiClient {
                         int h = e.has("y") ? e.get("y").asInt(0) : 0;
                         if (w > 0 && h > 0) md.levels.add(new int[]{w, h});
                     }
+                }
+            }
+
+            // pixel_size_nm is an object with x/y in nanometers
+            if (wsiNode.has("pixel_size_nm") && wsiNode.get("pixel_size_nm").isObject()) {
+                final JsonNode ps = wsiNode.get("pixel_size_nm");
+                double x = ps.path("x").asDouble(Double.NaN);
+                double y = ps.path("y").asDouble(Double.NaN);
+                if (x > 0 && y > 0) {
+                    md.pixelWidthMicrons = x / 1000.0;
+                    md.pixelHeightMicrons = y / 1000.0;
                 }
             }
 
