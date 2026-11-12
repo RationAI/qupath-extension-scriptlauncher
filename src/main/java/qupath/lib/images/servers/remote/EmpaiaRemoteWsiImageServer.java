@@ -114,13 +114,18 @@ public class EmpaiaRemoteWsiImageServer extends AbstractTileableImageServer {
 		}
 		List<ImageResolutionLevel> levels = builder.build();
 
-		originalMetadata = new ImageServerMetadata.Builder(getClass(), (uri != null ? uri.toString() : wsiId), md.width, md.height)
+		ImageServerMetadata.Builder metadataBuilder = new ImageServerMetadata.Builder(getClass(), (uri != null ? uri.toString() : wsiId), md.width, md.height)
 				.channels(ImageChannel.getDefaultRGBChannels())
 				.rgb(true)
 				.pixelType(PixelType.UINT8)
 				.preferredTileSize(md.tileWidth, md.tileHeight)
-				.levels(levels)
-				.build();
+				.levels(levels);
+		if (md.pixelWidthMicrons > 0 && md.pixelHeightMicrons > 0) {
+			metadataBuilder.pixelSizeMicrons(md.pixelWidthMicrons, md.pixelHeightMicrons);
+		} else {
+			logger.warn("Slide {} has no pixel size; measurements will be in pixels", wsiId);
+		}
+		originalMetadata = metadataBuilder.build();
 
 		// Best-effort fetch to log server capability
 		try {
