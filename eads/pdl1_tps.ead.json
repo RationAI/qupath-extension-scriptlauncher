@@ -13,11 +13,11 @@
         }
     },
     "io": {
-        "my_wsi": { "type": "wsi" },
+        "slide": { "type": "wsi" },
         "script": { "type": "string" },
         "input_roi": {
             "type": "rectangle",
-            "reference": "io.my_wsi"
+            "reference": "io.slide"
         },
         "conf_threshold": { "type": "float" },
         "iou_threshold": { "type": "float" },
@@ -25,21 +25,21 @@
             "type": "collection",
             "items": {
                 "type": "polygon",
-                "reference": "io.my_wsi"
+                "reference": "io.slide"
             }
         },
         "negative_tumor_cells": {
             "type": "collection",
             "items": {
                 "type": "polygon",
-                "reference": "io.my_wsi"
+                "reference": "io.slide"
             }
         },
         "non_tumor_cells": {
             "type": "collection",
             "items": {
                 "type": "polygon",
-                "reference": "io.my_wsi"
+                "reference": "io.slide"
             }
         },
         "score_percent": {
@@ -62,7 +62,7 @@
     "modes": {
         "standalone": {
             "inputs": [
-                "my_wsi",
+                "slide",
                 "script",
                 "input_roi",
                 "conf_threshold",
