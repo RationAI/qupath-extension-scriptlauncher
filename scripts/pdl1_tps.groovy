@@ -132,6 +132,19 @@ def pathClasses = [
 ]
 def cellsByClass = [[], [], []]
 double radius = CELL_RADIUS_UM / pixelSize
+// Cells are posted as polygons, and an ellipse ROI exports only 4 points, so build the circle explicitly.
+int CIRCLE_POINTS = 16
+double[] circleDx = (0..<CIRCLE_POINTS).collect { radius * Math.cos(2 * Math.PI * it / CIRCLE_POINTS) } as double[]
+double[] circleDy = (0..<CIRCLE_POINTS).collect { radius * Math.sin(2 * Math.PI * it / CIRCLE_POINTS) } as double[]
+def circleAt = { double cx, double cy ->
+    double[] xs = new double[CIRCLE_POINTS]
+    double[] ys = new double[CIRCLE_POINTS]
+    for (int i = 0; i < CIRCLE_POINTS; i++) {
+        xs[i] = cx + circleDx[i]
+        ys[i] = cy + circleDy[i]
+    }
+    return ROIs.createPolygonROI(xs, ys, roi.getImagePlane())
+}
 
 api.reportProgress(0.05)
 println "Running PD-L1 cell detection on ${totalTiles} tiles..."
@@ -169,7 +182,7 @@ for (int ty = 0; ty < tilesY; ty++) {
             double gx = rx + cx * scaleX
             double gy = ry + cy * scaleY
             if (!roi.contains(gx, gy)) continue
-            def circle = ROIs.createEllipseROI(gx - radius, gy - radius, 2 * radius, 2 * radius, roi.getImagePlane())
+            def circle = circleAt(gx, gy)
             int cls = (int) box[5]
             cellsByClass[cls] << PathObjects.createDetectionObject(circle, pathClasses[cls])
         }
